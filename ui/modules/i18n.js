@@ -1,0 +1,276 @@
+export const translations = {
+  de: {
+    // Navigation & Header
+    navPlay: 'Spielen',
+    navProfiles: 'Profiles',
+    navSkins: 'Skins',
+    navSettings: 'Einstellungen',
+    yourLauncher: 'DEIN LAUNCHER',
+    loadingVersions: 'Versionen laden …',
+    allUpdated: 'Alles aktuell',
+    versionsSaved: 'Versionsliste gespeichert',
+    noConnection: 'Keine Verbindung',
+    signIn: 'Anmelden',
+    microsoftAccount: 'Microsoft-Konto',
+    accountsHeading: 'Minecraft-Konten',
+    addAccount: 'Konto hinzufügen',
+
+    // Play Page
+    activeProfile: 'AKTIVES PROFIL',
+    play: 'SPIELEN',
+    starting: 'Startet …',
+    running: 'Läuft',
+    readyToPlay: 'Bereit, wenn du es bist.',
+    signInToPlay: 'Melde dich an, um loszuspielen.',
+    openGameLog: 'Spielprotokoll öffnen',
+    selectProfile: 'PROFIL WÄHLEN',
+    createNewProfile: 'Neues Profil erstellen',
+    noProfileYet: 'Noch kein Profil',
+    createProfile: 'Profil erstellen',
+
+    // Profiles Page
+    profilesTitle: 'Deine Profiles.',
+    profilesSubtitle: 'Deine Versionen. Deine Welten.',
+    searchProfilesPlaceholder: 'Profile suchen …',
+    create: 'Erstellen',
+    filterAll: 'Alle',
+    filterCaeser: 'Caeser',
+    filterFabric: 'Fabric',
+    filterVanilla: 'Vanilla',
+
+    // Profile Detail Page
+    backToProfiles: '← Zurück zu Profiles',
+    yourGameProfile: 'DEIN SPIELPROFIL',
+    statLastPlayed: 'Zuletzt gespielt',
+    statPlaytime: 'Spielzeit insgesamt',
+    statStorage: 'Speicher im Profil',
+    statNever: 'Noch nie',
+    installedMods: 'Installierte Mods',
+    installedResourcePacks: 'Installierte Ressourcenpakete',
+    installedShaders: 'Installierte Shader-Pakete',
+    searchContentPlaceholder: 'Inhalte im Profil suchen …',
+    addMods: 'Mods hinzufügen',
+    addResourcePacks: 'Ressourcenpakete hinzufügen',
+    addShaders: 'Shader-Pakete hinzufügen',
+    installCaeserMod: 'Caeser Client Mod installieren',
+    contents: 'INHALTE',
+    mods: 'MODS',
+    resourcepacks: 'RESSOURCENPAKETE',
+    shaders: 'SHADER-PAKETE',
+
+    // Skins Page
+    skinsTitle: 'Deine Skins.',
+    skinsSubtitle: 'Wähle deinen Look oder lade eigene Minecraft-Skins hoch.',
+    addSkin: 'Skin hinzufügen',
+    activeSkin: 'AKTIVER SKIN',
+    selectSkin: 'Auswählen',
+    activeBadge: 'Aktiv',
+    steveSkin: 'Klassischer Steve',
+    accountSkin: 'Microsoft-Konto Skin',
+    customSkin: 'Eigener Skin',
+    classicModel: 'Klassisch',
+    renameSkin: 'Skin umbenennen',
+    skinNamePrompt: 'Neuen Namen für den Skin eingeben:',
+    editSkin: 'SKIN BEARBEITEN',
+    skinNameLabel: 'Skin-Name',
+    cancel: 'Abbrechen',
+    save: 'Speichern',
+    dropSkinNote: 'Unterstützt 64x64 und 64x32 PNG-Skin-Dateien.',
+
+    // Settings Page
+    settingsTitle: 'Einstellungen',
+    settingsSubtitle: 'Ein bisschen Feintuning. Ganz nach deinem Geschmack.',
+    catGeneral: 'Allgemein',
+    catThemes: 'Themes',
+    language: 'SPRACHE',
+    languageDesc: 'Wähle die Anzeigesprache für den Launcher',
+    javaAndFiles: 'Java & Dateien',
+    javaRuntime: 'Java-Laufzeit',
+    javaAuto: 'Automatisch',
+    javaPick: 'Auswählen',
+    gameFolder: 'Spielverzeichnis',
+    gameFolderDesc: 'Deine Profile, Welten und Mods.',
+    openFolder: 'Ordner öffnen ↗',
+    aboutClient: 'Über Caeser Client',
+    versionLabel: 'Version',
+    platformLabel: 'Plattform',
+    modLoaderLabel: 'Mod-Loader',
+    downloadsLabel: 'Downloads',
+    disclaimer: 'Unabhängiger Launcher für Minecraft Java Edition. Nicht verbunden mit Mojang oder Microsoft.',
+    colorSchemes: 'Farbschemata & Themes',
+    customAccent: 'Eigene Akzentfarbe',
+    customAccentDesc: 'Wähle einen ganz eigenen Ton für die gesamte Launcher-Oberfläche.',
+    applyAccent: 'Anwenden',
+    atmosphere: 'Hintergrund-Atmosphäre',
+    atmosphereDesc: 'Wähle den Stil des Launcher-Hintergrunds.',
+    ambientAnim: 'Ambient-Animation',
+    ambientAnimDesc: 'Sanftes Licht auf deiner Startseite.',
+    glowTitle: 'Glow-Leuchten',
+    glowDesc: 'Intensität des Neon-Leuchtens an Akzenten.',
+    glowOff: 'Aus',
+    glowSubtle: 'Dezent',
+    glowNeon: 'Neon',
+    gameAndStart: 'Spiel & Start',
+    autoLog: 'Spielprotokoll beim Start',
+    autoLogDesc: 'Öffnet beim Starten von Minecraft automatisch ein separates Log-Fenster, das du frei verschieben kannst.',
+    customWallpaperTitle: 'Eigenes Wallpaper & Animation',
+    noCustomWallpaper: 'Kein eigenes Wallpaper aktiv',
+    uploadWallpaper: 'Wallpaper auswählen (Bild / GIF / Video)',
+    removeWallpaper: 'Wallpaper entfernen',
+    wallpaperOpacity: 'Hintergrund-Deckkraft',
+    wallpaperOpacityDesc: 'Transparenz des Hintergrunds (10% bis 100%)',
+    wallpaperBlur: 'Hintergrund-Unschärfe (Blur)',
+    wallpaperBlurDesc: 'Weichzeichnung des Hintergrunds für maximale Lesbarkeit'
+  },
+  en: {
+    // Navigation & Header
+    navPlay: 'Play',
+    navProfiles: 'Profiles',
+    navSkins: 'Skins',
+    navSettings: 'Settings',
+    yourLauncher: 'YOUR LAUNCHER',
+    loadingVersions: 'Loading versions …',
+    allUpdated: 'All up to date',
+    versionsSaved: 'Version list saved',
+    noConnection: 'No connection',
+    signIn: 'Sign In',
+    microsoftAccount: 'Microsoft Account',
+    accountsHeading: 'Minecraft Accounts',
+    addAccount: 'Add Account',
+
+    // Play Page
+    activeProfile: 'ACTIVE PROFILE',
+    play: 'PLAY',
+    starting: 'Starting …',
+    running: 'Running',
+    readyToPlay: 'Ready when you are.',
+    signInToPlay: 'Sign in to start playing.',
+    openGameLog: 'Open game log',
+    selectProfile: 'SELECT PROFILE',
+    createNewProfile: 'Create new profile',
+    noProfileYet: 'No profile yet',
+    createProfile: 'Create Profile',
+
+    // Profiles Page
+    profilesTitle: 'Your Profiles.',
+    profilesSubtitle: 'Your versions. Your worlds.',
+    searchProfilesPlaceholder: 'Search profiles …',
+    create: 'Create',
+    filterAll: 'All',
+    filterCaeser: 'Caeser',
+    filterFabric: 'Fabric',
+    filterVanilla: 'Vanilla',
+
+    // Profile Detail Page
+    backToProfiles: '← Back to Profiles',
+    yourGameProfile: 'YOUR GAME PROFILE',
+    statLastPlayed: 'Last played',
+    statPlaytime: 'Total playtime',
+    statStorage: 'Profile storage',
+    statNever: 'Never',
+    installedMods: 'Installed Mods',
+    installedResourcePacks: 'Installed Resource Packs',
+    installedShaders: 'Installed Shader Packs',
+    searchContentPlaceholder: 'Search contents in profile …',
+    addMods: 'Add Mods',
+    addResourcePacks: 'Add Resource Packs',
+    addShaders: 'Add Shader Packs',
+    installCaeserMod: 'Install Caeser Client Mod',
+    contents: 'CONTENTS',
+    mods: 'MODS',
+    resourcepacks: 'RESOURCE PACKS',
+    shaders: 'SHADER PACKS',
+
+    // Skins Page
+    skinsTitle: 'Your Skins.',
+    skinsSubtitle: 'Choose your look or upload custom Minecraft skins.',
+    addSkin: 'Add Skin',
+    activeSkin: 'ACTIVE SKIN',
+    selectSkin: 'Select',
+    activeBadge: 'Active',
+    steveSkin: 'Classic Steve',
+    accountSkin: 'Microsoft Account Skin',
+    customSkin: 'Custom Skin',
+    classicModel: 'Classic',
+    renameSkin: 'Rename Skin',
+    skinNamePrompt: 'Enter new name for skin:',
+    editSkin: 'EDIT SKIN',
+    skinNameLabel: 'Skin name',
+    cancel: 'Cancel',
+    save: 'Save',
+    dropSkinNote: 'Supports 64x64 and 64x32 PNG skin files.',
+
+    // Settings Page
+    settingsTitle: 'Settings',
+    settingsSubtitle: 'A bit of fine tuning. Tailored to your style.',
+    catGeneral: 'General',
+    catThemes: 'Themes',
+    language: 'LANGUAGE',
+    languageDesc: 'Choose the display language for the launcher',
+    javaAndFiles: 'Java & Files',
+    javaRuntime: 'Java Runtime',
+    javaAuto: 'Automatic',
+    javaPick: 'Select',
+    gameFolder: 'Game Directory',
+    gameFolderDesc: 'Your profiles, worlds, and mods.',
+    openFolder: 'Open Folder ↗',
+    aboutClient: 'About Caeser Client',
+    versionLabel: 'Version',
+    platformLabel: 'Platform',
+    modLoaderLabel: 'Mod Loader',
+    downloadsLabel: 'Downloads',
+    disclaimer: 'Independent launcher for Minecraft Java Edition. Not affiliated with Mojang or Microsoft.',
+    colorSchemes: 'Color Schemes & Themes',
+    customAccent: 'Custom Accent Color',
+    customAccentDesc: 'Pick a custom hue for the entire launcher interface.',
+    applyAccent: 'Apply',
+    atmosphere: 'Background Atmosphere',
+    atmosphereDesc: 'Choose the style of the launcher background.',
+    ambientAnim: 'Ambient Animation',
+    ambientAnimDesc: 'Gentle light effects on your home screen.',
+    glowTitle: 'Glow Intensity',
+    glowDesc: 'Intensity of the neon glow accents.',
+    glowOff: 'Off',
+    glowSubtle: 'Subtle',
+    glowNeon: 'Neon',
+    gameAndStart: 'Game & Launch',
+    autoLog: 'Game Log on Launch',
+    autoLogDesc: 'Automatically opens a detached log window when Minecraft starts, which you can move anywhere.',
+    customWallpaperTitle: 'Custom Wallpaper & Animation',
+    noCustomWallpaper: 'No custom wallpaper active',
+    uploadWallpaper: 'Select Wallpaper (Image / GIF / Video)',
+    removeWallpaper: 'Remove Wallpaper',
+    wallpaperOpacity: 'Background Opacity',
+    wallpaperOpacityDesc: 'Background layer transparency (10% to 100%)',
+    wallpaperBlur: 'Background Blur',
+    wallpaperBlurDesc: 'Background blur amount for crisp text readability'
+  }
+};
+
+export let currentLanguage = 'de';
+
+export function t(key) {
+  return translations[currentLanguage]?.[key] || translations.de?.[key] || key;
+}
+
+export function applyLanguage(lang) {
+  currentLanguage = (lang === 'en') ? 'en' : 'de';
+  document.documentElement.lang = currentLanguage;
+
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.dataset.i18n;
+    if (key) el.textContent = t(key);
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    const key = el.dataset.i18nPlaceholder;
+    if (key) el.placeholder = t(key);
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    const key = el.dataset.i18nTitle;
+    if (key) el.title = t(key);
+  });
+  document.querySelectorAll('[data-i18n-aria]').forEach(el => {
+    const key = el.dataset.i18nAria;
+    if (key) el.setAttribute('aria-label', t(key));
+  });
+}

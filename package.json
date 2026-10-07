@@ -1,0 +1,67 @@
+{
+  "name": "caeser-client",
+  "version": "0.3.12",
+  "description": "Caeser Client – Minecraft Java Launcher für Windows",
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.cjs",
+    "test:ui": "node tests/ui.cjs",
+    "build": "electron-builder --win nsis portable --x64"
+  },
+  "keywords": [],
+  "author": "Caeser Client",
+  "license": "GPL-3.0-only",
+  "type": "commonjs",
+  "dependencies": {
+    "yauzl": "^3.4.0"
+  },
+  "devDependencies": {
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
+    "playwright": "^1.63.0"
+  },
+  "private": true,
+  "build": {
+    "appId": "de.caeser.client",
+    "productName": "Caeser Client",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "ui/**/*",
+      "resources/icon.png",
+      "LICENSE",
+      "NOTICE.md",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/caeserclient-1.0.0.jar",
+        "to": "caeserclient-1.0.0.jar"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "signAndEditExecutable": true,
+      "icon": "resources/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Caeser Client"
+    },
+    "portable": {
+      "artifactName": "Caeser-Client-Portable-${version}.exe"
+    },
+    "toolsets": {
+      "nsis": "1.2.1"
+    }
+  }
+}

@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'">
+  <title>Caeser Client - Spielprotokoll</title>
+  <style>
+    :root {
+      --accent: #b23cee;
+      --bg: #0e0d14;
+      --surface: #15131e;
+      --surface-border: rgba(255, 255, 255, 0.08);
+      --text: #eae6f2;
+      --muted: #887d96;
+      --info: #80c7ff;
+      --warn: #ffbe3b;
+      --error: #ff4766;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+      font-size: 13px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+    }
+    /* Titlebar */
+    .titlebar {
+      height: 36px;
+      background: #09080e;
+      border-bottom: 1px solid var(--surface-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-left: 14px;
+      -webkit-app-region: drag;
+      flex-shrink: 0;
+    }
+    .title-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      color: #9f94af;
+    }
+    .title-icon {
+      width: 18px;
+      height: 18px;
+      background-color: var(--accent);
+      -webkit-mask: url('assets/logo.png') no-repeat center / contain;
+      mask: url('assets/logo.png') no-repeat center / contain;
+    }
+    .title-actions {
+      display: flex;
+      height: 100%;
+      -webkit-app-region: no-drag;
+    }
+    .win-btn {
+      width: 44px;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: 0;
+      color: #9f94af;
+      cursor: pointer;
+      font-size: 15px;
+      transition: background .15s, color .15s;
+    }
+    .win-btn:hover { background: rgba(255, 255, 255, 0.08); color: #ffffff; }
+    .win-btn.close:hover { background: #e81123; color: #ffffff; }
+
+    /* Toolbar */
+    .toolbar {
+      padding: 10px 14px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--surface-border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      flex-shrink: 0;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 11px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--surface-border);
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #777;
+    }
+    .status-badge.running { background: rgba(0, 230, 118, 0.12); border-color: rgba(0, 230, 118, 0.35); color: #4ce68f; }
+    .status-badge.running .status-dot { background: #00e676; box-shadow: 0 0 8px #00e676; animation: pulse 1.8s infinite; }
+    .status-badge.starting { background: rgba(255, 190, 59, 0.12); border-color: rgba(255, 190, 59, 0.35); color: #ffbe3b; }
+    .status-badge.starting .status-dot { background: #ffbe3b; box-shadow: 0 0 8px #ffbe3b; }
+    .status-badge.stopped { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); color: #9f94af; }
+    .status-badge.stopped .status-dot { background: #665f72; }
+    .status-badge.crashed { background: rgba(255, 71, 102, 0.12); border-color: rgba(255, 71, 102, 0.35); color: #ff4766; }
+    .status-badge.crashed .status-dot { background: #ff4766; box-shadow: 0 0 8px #ff4766; }
+
+    .profile-badge {
+      font-size: 11px;
+      color: #b5a9c7;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--surface-border);
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+    .profile-badge strong { color: #fff; margin-left: 4px; }
+
+    .search-box {
+      position: relative;
+      flex: 1;
+      min-width: 140px;
+      max-width: 260px;
+    }
+    .search-input {
+      width: 100%;
+      background: #0f0d15;
+      border: 1px solid var(--surface-border);
+      border-radius: 6px;
+      padding: 6px 10px 6px 28px;
+      color: #fff;
+      font-size: 11px;
+      outline: none;
+      transition: border-color .18s;
+    }
+    .search-input:focus { border-color: var(--accent); }
+    .search-icon {
+      position: absolute;
+      left: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 13px;
+      height: 13px;
+      fill: none;
+      stroke: #776a88;
+      stroke-width: 2;
+      pointer-events: none;
+    }
+
+    .tool-actions {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 11px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      border: 1px solid var(--surface-border);
+      background: rgba(255, 255, 255, 0.04);
+      color: #c0b5cf;
+      cursor: pointer;
+      transition: all .16s ease;
+    }
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+    .btn.active {
+      background: color-mix(in srgb, var(--accent) 22%, #1b1724);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .btn-danger:hover {
+      background: rgba(255, 71, 102, 0.16);
+      border-color: rgba(255, 71, 102, 0.4);
+      color: #ff4766;
+    }
+    .line-counter {
+      font-size: 11px;
+      color: var(--muted);
+      margin-left: 4px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Terminal Console */
+    .terminal-container {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 12px 14px;
+      background: #09080e;
+      font-family: 'Consolas', 'Cascadia Code', 'Fira Code', Menlo, monospace;
+      font-size: 11.5px;
+      line-height: 1.6;
+      user-select: text;
+    }
+    .terminal-container::-webkit-scrollbar { width: 8px; }
+    .terminal-container::-webkit-scrollbar-thumb { background: #262132; border-radius: 4px; }
+    .terminal-container::-webkit-scrollbar-thumb:hover { background: #3b334e; }
+
+    .log-line {
+      display: flex;
+      align-items: flex-start;
+      padding: 1px 0;
+      word-break: break-all;
+      white-space: pre-wrap;
+    }
+    .log-num {
+      width: 44px;
+      flex-shrink: 0;
+      color: #484055;
+      text-align: right;
+      padding-right: 12px;
+      user-select: none;
+    }
+    .log-text {
+      flex: 1;
+      color: #c9c0d6;
+    }
+    .log-line.info .log-text { color: #d0c8dd; }
+    .log-line.warn .log-text { color: var(--warn); }
+    .log-line.warn { background: rgba(255, 190, 59, 0.05); }
+    .log-line.error .log-text { color: var(--error); font-weight: 600; }
+    .log-line.error { background: rgba(255, 71, 102, 0.08); }
+    .empty-notice {
+      color: #5d536e;
+      text-align: center;
+      padding: 60px 20px;
+      font-family: inherit;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.2); }
+    }
+  </style>
+</head>
+<body>
+  <div class="titlebar">
+    <div class="title-left">
+      <div class="title-icon"></div>
+      <span>CAESER CLIENT · SPIELPROTOKOLL</span>
+    </div>
+    <div class="title-actions">
+      <button class="win-btn" id="win-min" aria-label="Minimieren">−</button>
+      <button class="win-btn" id="win-max" aria-label="Maximieren">□</button>
+      <button class="win-btn close" id="win-close" aria-label="Schließen">×</button>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="status-badge" id="status-badge">
+      <span class="status-dot"></span>
+      <span id="status-text">Warte auf Spielstart …</span>
+    </div>
+    <div class="profile-badge">Profil: <strong id="profile-name">Caeser</strong></div>
+
+    <div class="search-box">
+      <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+      <input type="text" id="search-input" class="search-input" placeholder="Im Log suchen …" spellcheck="false">
+    </div>
+
+    <div class="tool-actions">
+      <button class="btn active" id="btn-autoscroll" title="Automatisches Herunterscrollen">
+        <span>⬇ Auto-Scroll</span>
+      </button>
+      <button class="btn" id="btn-copy" title="Gesamtes Log in die Zwischenablage kopieren">
+        <span>📋 Kopieren</span>
+      </button>
+      <button class="btn btn-danger" id="btn-clear" title="Log-Ansicht leeren">
+        <span>🗑️ Leeren</span>
+      </button>
+      <span class="line-counter" id="line-counter">0 Zeilen</span>
+    </div>
+  </div>
+
+  <div class="terminal-container" id="terminal">
+    <div class="empty-notice" id="empty-notice">Noch keine Log-Einträge vorhanden. Starte Minecraft, um die Ausgaben live zu verfolgen.</div>
+  </div>
+
+  <script>
+    const term = document.getElementById('terminal');
+    const statusBadge = document.getElementById('status-badge');
+    const statusText = document.getElementById('status-text');
+    const profileNameEl = document.getElementById('profile-name');
+    const lineCounter = document.getElementById('line-counter');
+    const searchInput = document.getElementById('search-input');
+    const btnAutoscroll = document.getElementById('btn-autoscroll');
+    const btnCopy = document.getElementById('btn-copy');
+    const btnClear = document.getElementById('btn-clear');
+    const emptyNotice = document.getElementById('empty-notice');
+
+    let allLines = [];
+    let autoscroll = true;
+    let filterQuery = '';
+
+    // Window controls
+    document.getElementById('win-min').onclick = () => window.logApi?.action('minimize');
+    document.getElementById('win-max').onclick = () => window.logApi?.action('maximize');
+    document.getElementById('win-close').onclick = () => window.logApi?.action('close');
+
+    function classifyLine(text) {
+      if (/\[.*?(?:WARN|WARNUNG|WARNING).*?\]/i.test(text) || text.includes('WARN')) return 'warn';
+      if (/\[.*?(?:ERROR|FATAL|EXCEPTION|CRASH).*?\]/i.test(text) || /(?:Exception|Error|CrashReport):/i.test(text)) return 'error';
+      if (/\[.*?(?:INFO).*?\]/i.test(text)) return 'info';
+      return '';
+    }
+
+    function renderLines() {
+      term.innerHTML = '';
+      const visible = filterQuery
+        ? allLines.filter(line => line.toLowerCase().includes(filterQuery))
+        : allLines;
+
+      if (!visible.length) {
+        term.innerHTML = `<div class="empty-notice">${filterQuery ? 'Keine Treffer für "' + filterQuery + '" gefunden.' : 'Noch keine Log-Einträge vorhanden.'}</div>`;
+        lineCounter.textContent = `${allLines.length} Zeilen`;
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+      visible.forEach((line, index) => {
+        const row = document.createElement('div');
+        const levelClass = classifyLine(line);
+        row.className = 'log-line' + (levelClass ? ' ' + levelClass : '');
+
+        const num = document.createElement('span');
+        num.className = 'log-num';
+        num.textContent = index + 1;
+
+        const text = document.createElement('span');
+        text.className = 'log-text';
+        text.textContent = line;
+
+        row.appendChild(num);
+        row.appendChild(text);
+        fragment.appendChild(row);
+      });
+
+      term.appendChild(fragment);
+      lineCounter.textContent = `${allLines.length} Zeilen`;
+      if (autoscroll) term.scrollTop = term.scrollHeight;
+    }
+
+    function addLine(line) {
+      allLines.push(line);
+      if (allLines.length > 3000) allLines.shift();
+
+      if (emptyNotice && emptyNotice.parentNode === term) {
+        term.removeChild(emptyNotice);
+      }
+
+      if (!filterQuery || line.toLowerCase().includes(filterQuery)) {
+        const row = document.createElement('div');
+        const levelClass = classifyLine(line);
+        row.className = 'log-line' + (levelClass ? ' ' + levelClass : '');
+
+        const num = document.createElement('span');
+        num.className = 'log-num';
+        num.textContent = allLines.length;
+
+        const text = document.createElement('span');
+        text.className = 'log-text';
+        text.textContent = line;
+
+        row.appendChild(num);
+        row.appendChild(text);
+        term.appendChild(row);
+
+        if (autoscroll) term.scrollTop = term.scrollHeight;
+      }
+      lineCounter.textContent = `${allLines.length} Zeilen`;
+    }
+
+    function updateStatus(state, info) {
+      statusBadge.className = 'status-badge ' + state;
+      if (state === 'running') {
+        statusText.textContent = 'Minecraft läuft';
+      } else if (state === 'starting') {
+        statusText.textContent = 'Startet …';
+      } else if (state === 'stopped') {
+        statusText.textContent = info ? `Beendet (Code ${info.code})` : 'Beendet';
+      } else if (state === 'crashed') {
+        statusText.textContent = `Absturz (Exit Code ${info?.code ?? 1})`;
+      }
+    }
+
+    // Autoscroll toggle
+    btnAutoscroll.onclick = () => {
+      autoscroll = !autoscroll;
+      btnAutoscroll.classList.toggle('active', autoscroll);
+      if (autoscroll) term.scrollTop = term.scrollHeight;
+    };
+
+    term.addEventListener('wheel', (e) => {
+      if (e.deltaY < 0 && autoscroll) {
+        // user scrolled up
+        autoscroll = false;
+        btnAutoscroll.classList.remove('active');
+      }
+    });
+
+    // Copy
+    btnCopy.onclick = async () => {
+      const content = allLines.join('\n');
+      if (window.logApi?.copy) {
+        window.logApi.copy(content);
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(content);
+      }
+      const origText = btnCopy.querySelector('span').textContent;
+      btnCopy.querySelector('span').textContent = '✓ Kopiert!';
+      setTimeout(() => { btnCopy.querySelector('span').textContent = origText; }, 1800);
+    };
+
+    // Clear
+    btnClear.onclick = () => {
+      allLines = [];
+      renderLines();
+      if (window.logApi?.clear) window.logApi.clear();
+    };
+
+    // Search filter
+    searchInput.oninput = () => {
+      filterQuery = searchInput.value.trim().toLowerCase();
+      renderLines();
+    };
+
+    // IPC wiring
+    if (window.logApi) {
+      window.logApi.getInitialData().then(init => {
+        if (!init) return;
+        if (init.profileName) profileNameEl.textContent = init.profileName;
+        if (init.running) updateStatus('running');
+        if (Array.isArray(init.logs)) {
+          allLines = [...init.logs];
+          renderLines();
+        }
+      });
+
+      window.logApi.on('init-logs', ({ logs, profileName, running }) => {
+        if (profileName) profileNameEl.textContent = profileName;
+        updateStatus(running ? 'running' : 'stopped');
+        if (Array.isArray(logs)) {
+          allLines = [...logs];
+          renderLines();
+        }
+      });
+
+      window.logApi.on('game-spawn', ({ profileName }) => {
+        if (profileName) profileNameEl.textContent = profileName;
+        updateStatus('running');
+      });
+
+      window.logApi.on('game-log', line => {
+        addLine(line);
+      });
+
+      window.logApi.on('game-exit', ({ code }) => {
+        updateStatus(code === 0 ? 'stopped' : 'crashed', { code });
+      });
+
+      window.logApi.on('clear-logs', () => {
+        allLines = [];
+        renderLines();
+      });
+    }
+  </script>
+</body>
+</html>
