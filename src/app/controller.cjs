@@ -8,6 +8,9 @@ const { json } = require('../shared/net.cjs');
 const { Mods } = require('../mods/service.cjs');
 const { DEFAULT_CURSEFORGE_KEY } = require('../mods/providers.cjs');
 const { Session } = require('../game/session.cjs');
+const { DiscordRpcClient } = require('../shared/discord-rpc.cjs');
+const { createLogParser } = require('../game/log-parser.cjs');
+const { diagnoseCrash, executeAutoFix } = require('../game/crash-doctor.cjs');
 const themes = ['Cyberpunk','Ultraviolet','Toxic','Inferno','Glacier','Bloodmoon','Aurora','Bubblegum','Limelight','Sunset','Electric','Nebula','Goldrush','Emerald','Plasma','Crimson'];
 class Controller {
   constructor({ directory, encryption, resources, appVersion, emit, openBrowser }) {
@@ -19,14 +22,28 @@ class Controller {
     this.secrets = {};
     this.logHistory = [];
     this.wallpaper = null;
+    this.discordRpc = new DiscordRpcClient();
     this.mods = new Mods({root:this.root, profiles:this.profiles, getKey:()=>this.secrets.curseforgeKey || process.env.CAESER_CURSEFORGE_KEY || DEFAULT_CURSEFORGE_KEY,
       assertIdle:()=>{if(this.busy || this.game) throw new Error('Bitte zuerst Minecraft beenden.');},report:data=>this.emit('mod-progress',data)});
   }
   async load() {
-    this.settings = { theme: 'Ultraviolet', customAccent: '', atmosphere: 'obsidian', glow: 'subtle', clientId: '', javaPath: '', activeAccount: '', activeSkinId: 'account', hiddenSkins: [], skinNames: {}, language: 'de', animations: true, autoOpenLog: true, customWallpaper: null, ...await this.store.read('settings.json', {}) };
+    this.settings = { theme: 'Ultraviolet', customAccent: '', atmosphere: 'obsidian', glow: 'subtle', clientId: '', javaPath: '', activeAccount: '', activeSkinId: 'account', hiddenSkins: [], skinNames: {}, language: 'de', animations: true, autoOpenLog: true, discordRpc: true, customWallpaper: null, ...await this.store.read('settings.json', {}) };
     this.skins = await this.store.read('skins.json', []);
     try { this.wallpaper = await this.store.read('wallpaper.json', null); } catch { this.wallpaper = null; }
     await this.profiles.load(this.settings);
+    if (this.settings.discordRpc !== false) {
+      this.discordRpc.setEnabled(true);
+      this.discordRpc.setActivity({
+        details: 'Im Hauptmenü',
+        state: 'Bereit zum Spielen',
+        assets: {
+          large_image: 'logo',
+          large_text: `Caeser Client v${this.appVersion || '0.3.13'}`
+        }
+      });
+    } else {
+      this.discordRpc.setEnabled(false);
+    }
     try { this.secrets = await this.store.read('integrations.bin',{},true); } catch { this.notice='Mod-Quellen konnten nicht entschlüsselt werden. Bitte den CurseForge-Schlüssel erneut hinterlegen.'; }
     try { this.accounts = await this.store.read('accounts.bin', [], true); }
     catch { this.notice = 'Gespeicherte Konten konnten nicht entschlüsselt werden. Bitte erneut anmelden.'; }
@@ -144,6 +161,27 @@ class Controller {
     }
     if ('animations' in patch) next.animations = Boolean(patch.animations);
     if ('autoOpenLog' in patch) next.autoOpenLog = Boolean(patch.autoOpenLog);
+    if ('discordRpc' in patch) {
+      next.discordRpc = Boolean(patch.discordRpc);
+      this.discordRpc.setEnabled(next.discordRpc);
+      if (next.discordRpc) {
+        if (this.game && this.profiles.selected()) {
+          const profile = this.profiles.selected();
+          this.discordRpc.setActivity({
+            details: `Spielt ${profile.name}`,
+            state: `${profile.version} (${profile.mode === 'caeser' ? 'Caeser Client' : profile.mode === 'fabric' ? 'Fabric' : 'Vanilla'})`,
+            timestamps: { start: Math.floor(Date.now() / 1000) },
+            assets: { large_image: 'logo', large_text: `Caeser Client v${this.appVersion || '0.3.13'}` }
+          });
+        } else {
+          this.discordRpc.setActivity({
+            details: 'Im Hauptmenü',
+            state: 'Bereit zum Spielen',
+            assets: { large_image: 'logo', large_text: `Caeser Client v${this.appVersion || '0.3.13'}` }
+          });
+        }
+      }
+    }
     if ('customWallpaper' in patch) {
       if (patch.customWallpaper === null) {
         next.customWallpaper = null;
@@ -213,18 +251,32 @@ class Controller {
       let session, timer;
       let buffer = '';
       const redact = text => String(text).replaceAll(account.accessToken, '[TOKEN]').replaceAll(account.refreshToken, '[TOKEN]');
+      const parser = createLogParser(parsedLine => {
+        const item = redact(parsedLine).slice(0, 2000);
+        this.logHistory.push(item);
+        if (this.logHistory.length > 2500) this.logHistory.shift();
+        this.emit('game-log', item);
+      });
       const output = data => {
         buffer += data.toString(); const lines = buffer.split(/\r?\n/); buffer = lines.pop();
         for (const line of lines) {
-          const item = redact(line).slice(0, 2000);
-          this.logHistory.push(item);
-          if (this.logHistory.length > 2500) this.logHistory.shift();
-          this.emit('game-log', item);
+          parser.feed(line);
         }
         if (buffer.length > 16000) buffer = '';
       };
       child.stdout.on('data', output); child.stderr.on('data', output);
       child.once('spawn', () => {
+        if (this.settings.discordRpc !== false) {
+          this.discordRpc.setActivity({
+            details: `Spielt ${profile.name}`,
+            state: `${profile.version} (${profile.mode === 'caeser' ? 'Caeser Client' : profile.mode === 'fabric' ? 'Fabric' : 'Vanilla'})`,
+            timestamps: { start: Math.floor(Date.now() / 1000) },
+            assets: {
+              large_image: 'logo',
+              large_text: `Caeser Client v${this.appVersion || '0.3.13'}`
+            }
+          });
+        }
         this.emit('game-spawn', { profileName: profile.name, autoOpenLog: this.settings.autoOpenLog !== false });
         session = new Session(this.profiles,profile.id); session.flush().catch(()=>this.emit('notice','Spielstatistik konnte nicht gespeichert werden.'));
         timer=setInterval(()=>session.flush().catch(()=>{}),15000); timer.unref();
@@ -232,19 +284,49 @@ class Controller {
       child.once('close', async code => {
         clearInterval(timer);
         if (buffer) {
-          const item = redact(buffer).slice(0, 2000);
-          this.logHistory.push(item);
-          this.emit('game-log', item);
+          parser.feed(buffer);
+          buffer = '';
         }
+        parser.flush();
         this.game = null;
         if (session) await session.flush().catch(()=>this.emit('notice','Spielstatistik konnte nicht gespeichert werden.'));
-        this.emit('game-exit', { code });
+
+        let diagnosis = null;
+        if (code !== 0) {
+          try {
+            diagnosis = await diagnoseCrash({
+              code,
+              logLines: this.logHistory,
+              profile,
+              instanceDir: prepared.instance,
+              maxMemoryMb: this.maxMemoryMb
+            });
+          } catch (err) {
+            console.error('Fehler bei Crash-Diagnose:', err);
+          }
+        }
+
+        if (this.settings.discordRpc !== false) {
+          this.discordRpc.setActivity({
+            details: 'Im Hauptmenü',
+            state: 'Bereit zum Spielen',
+            assets: { large_image: 'logo', large_text: `Caeser Client v${this.appVersion || '0.3.13'}` }
+          });
+        }
+
+        this.emit('game-exit', { code, diagnosis });
       });
       await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
       if (this.game) report({ stage: 'Minecraft läuft', percent: 100 });
       return { running: !!this.game };
     } catch (error) { this.game = null; report({ stage: 'Start fehlgeschlagen', percent: 0 }); throw error; }
     finally { this.busy = false; }
+  }
+  async autoFixCrash(action) {
+    return executeAutoFix(action, this);
+  }
+  destroy() {
+    this.discordRpc.destroy();
   }
 }
 module.exports = { Controller };

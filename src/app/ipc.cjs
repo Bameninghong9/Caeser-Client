@@ -71,6 +71,7 @@ function register(controller, win, pageURL, logManager) {
     }
     return true;
   });
+  handle('crash-doctor-fix', action => controller.autoFixCrash(action));
   handle('wallpaper-pick-file', async () => {
     const result = await dialog.showOpenDialog(win, {
       title: 'Hintergrund auswählen (Bild, GIF, Video)',

@@ -55,6 +55,12 @@ export function initSettings() {
     autoLogSwitch.onchange = () => action(() => save({ autoOpenLog: autoLogSwitch.checked }));
   }
 
+  // Discord RPC switch
+  const discordRpcSwitch = $('setting-discord-rpc');
+  if (discordRpcSwitch) {
+    discordRpcSwitch.onchange = () => action(() => save({ discordRpc: discordRpcSwitch.checked }));
+  }
+
   // Custom Wallpaper upload and controls
   let cachedWallpaper = null;
   const pickWallpaperBtn = $('btn-pick-wallpaper');
@@ -209,8 +215,9 @@ export function initSettings() {
     }
     document.querySelectorAll('.atmo-btn').forEach(b => b.classList.toggle('active', b.dataset.atmo === atmo));
 
-    // Custom Wallpaper & Auto Log Switch
+    // Custom Wallpaper & Auto Log Switch & Discord RPC
     if (autoLogSwitch) autoLogSwitch.checked = settings.autoOpenLog !== false;
+    if (discordRpcSwitch) discordRpcSwitch.checked = settings.discordRpc !== false;
     updateWallpaperDisplay(settings.customWallpaper);
 
     // Glow

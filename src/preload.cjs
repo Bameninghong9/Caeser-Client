@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('caeser', {
   selectSkin: id => invoke('skin-select', id),
   pickSkinFile: () => invoke('skin-pick-file'),
   openLogWindow: () => invoke('open-log-window'),
+  crashDoctorFix: action => invoke('crash-doctor-fix', action),
   pickWallpaperFile: () => invoke('wallpaper-pick-file'),
   getWallpaper: () => invoke('wallpaper-get'),
   setWallpaper: input => invoke('wallpaper-set', input),

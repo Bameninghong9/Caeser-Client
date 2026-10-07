@@ -362,13 +362,32 @@
       if (autoscroll) term.scrollTop = term.scrollHeight;
     }
 
-    function addLine(line) {
+    function cleanXmlIfPresent(raw) {
+      if (!raw || typeof raw !== 'string') return '';
+      if (raw.includes('<log4j:Event') || raw.includes('<log4j:Message>')) {
+        const loggerMatch = raw.match(/logger="([^"]*)"/);
+        const levelMatch = raw.match(/level="([^"]*)"/);
+        const timeMatch = raw.match(/timestamp="([^"]*)"/);
+        const msgMatch = raw.match(/<log4j:Message>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/log4j:Message>/) || raw.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
+        if (msgMatch) {
+          const logger = loggerMatch ? loggerMatch[1] : '';
+          const level = (levelMatch ? levelMatch[1] : 'INFO').toUpperCase();
+          const d = timeMatch ? new Date(Number(timeMatch[1])) : new Date();
+          const pad = n => String(n).padStart(2, '0');
+          const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+          return `[${timeStr}] [${level}]${logger ? ' [' + logger + ']' : ''}: ${msgMatch[1].trim()}`;
+        }
+      }
+      return raw;
+    }
+
+    function addLine(rawLine) {
+      const line = cleanXmlIfPresent(rawLine);
       allLines.push(line);
       if (allLines.length > 3000) allLines.shift();
 
-      if (emptyNotice && emptyNotice.parentNode === term) {
-        term.removeChild(emptyNotice);
-      }
+      const existingNotice = term.querySelector('.empty-notice');
+      if (existingNotice) existingNotice.remove();
 
       if (!filterQuery || line.toLowerCase().includes(filterQuery)) {
         const row = document.createElement('div');
@@ -423,10 +442,14 @@
     // Copy
     btnCopy.onclick = async () => {
       const content = allLines.join('\n');
-      if (window.logApi?.copy) {
-        window.logApi.copy(content);
-      } else if (navigator.clipboard) {
-        await navigator.clipboard.writeText(content);
+      try {
+        if (window.logApi?.copy) {
+          await window.logApi.copy(content);
+        } else if (navigator.clipboard) {
+          await navigator.clipboard.writeText(content);
+        }
+      } catch (e) {
+        console.error('Clipboard copy error:', e);
       }
       const origText = btnCopy.querySelector('span').textContent;
       btnCopy.querySelector('span').textContent = '✓ Kopiert!';

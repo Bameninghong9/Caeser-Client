@@ -91,11 +91,17 @@ export function initPlay() {
   api.on('progress', progress => { $('progress-label').textContent = progress.stage; $('progress-fill').classList.toggle('indeterminate', progress.percent === null); $('progress-fill').style.width = progress.percent === null ? '30%' : `${progress.percent}%`; });
   const lines = [];
   api.on('game-log', line => { lines.push(line); if (lines.length > 500) lines.shift(); $('game-log').textContent = lines.join('\n'); $('game-log').scrollTop = $('game-log').scrollHeight; });
-  api.on('game-exit', ({ code }) => {
+  api.on('game-exit', ({ code, diagnosis }) => {
     action(async()=>update(await api.state()));
     model.running = false; $('play-button').disabled = false; $('play-label').textContent = 'Spielen'; $('progress-fill').classList.remove('indeterminate'); $('progress-fill').style.width = '0%';
     $('progress-label').textContent = code === 0 ? 'Minecraft wurde beendet.' : `Minecraft wurde beendet (Code ${code}).`;
-    if (code !== 0) toast('Minecraft wurde unerwartet beendet. Details stehen im Spielprotokoll.', true);
+    if (code !== 0) {
+      if (diagnosis) {
+        showCrashDoctor(diagnosis);
+      } else {
+        toast('Minecraft wurde unerwartet beendet. Details stehen im Spielprotokoll.', true);
+      }
+    }
   });
   $('show-log').onclick = () => {
     if (api.openLogWindow) {
@@ -105,4 +111,66 @@ export function initPlay() {
     }
   };
   $('clear-log').onclick = () => { lines.length = 0; $('game-log').textContent = 'Anzeige geleert.'; };
+}
+
+function showCrashDoctor(diag) {
+  const dialog = $('crash-doctor-dialog');
+  if (!dialog) return;
+
+  const titleEl = $('doctor-title');
+  const iconEl = $('doctor-icon');
+  const causeEl = $('doctor-cause');
+  const detailsEl = $('doctor-details-box');
+  const recEl = $('doctor-recommendation');
+  const autoFixBtn = $('doctor-autofix');
+  const openLogBtn = $('doctor-open-log');
+
+  if (titleEl) titleEl.textContent = diag.title || 'Spielabsturz analysiert';
+  if (iconEl) iconEl.textContent = diag.icon || '🩺';
+  if (causeEl) causeEl.textContent = diag.cause || 'Das Spiel wurde unerwartet beendet.';
+  if (detailsEl) {
+    detailsEl.textContent = diag.details || `Exit-Code: ${diag.code}`;
+    detailsEl.hidden = !diag.details;
+  }
+  if (recEl) recEl.textContent = diag.recommendation || 'Überprüfe das Log-Fenster.';
+
+  if (autoFixBtn) {
+    if (diag.autoFix) {
+      autoFixBtn.hidden = false;
+      autoFixBtn.textContent = diag.autoFix.buttonText || '⚡ Problem automatisch beheben';
+      autoFixBtn.disabled = false;
+      autoFixBtn.onclick = () => action(async () => {
+        autoFixBtn.disabled = true;
+        autoFixBtn.textContent = 'Wird repariert …';
+        try {
+          const res = await api.crashDoctorFix(diag.autoFix);
+          update(await api.state());
+          toast(res.message || 'Problem erfolgreich behoben!');
+          autoFixBtn.textContent = '✓ Behoben!';
+          setTimeout(() => {
+            dialog.close();
+          }, 1200);
+        } catch (err) {
+          autoFixBtn.disabled = false;
+          autoFixBtn.textContent = diag.autoFix.buttonText;
+          toast(err.message, true);
+        }
+      });
+    } else {
+      autoFixBtn.hidden = true;
+    }
+  }
+
+  if (openLogBtn) {
+    openLogBtn.onclick = () => {
+      dialog.close();
+      if (api.openLogWindow) {
+        api.openLogWindow().catch(() => $('logs-dialog')?.showModal());
+      } else {
+        $('logs-dialog')?.showModal();
+      }
+    };
+  }
+
+  if (!dialog.open) dialog.showModal();
 }

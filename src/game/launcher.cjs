@@ -187,7 +187,7 @@ function launchArguments(prepared, account, memory) {
     auth_session: `token:${account.accessToken}:${account.id}`, auth_xuid: account.xuid || '', clientid: account.clientId,
     version_name: metadata.id, version_type: metadata.type, game_directory: instance, assets_root: assetRoot,
     assets_index_name: metadata.assetIndex.id, game_assets: virtualRoot, user_type: 'msa', user_properties: '{}',
-    natives_directory: natives, launcher_name: 'Caeser Client', launcher_version: '0.3.5',
+    natives_directory: natives, launcher_name: 'Caeser Client', launcher_version: '0.3.15',
     classpath: classpath.join(path.delimiter), classpath_separator: path.delimiter, library_directory: libraryRoot,
     resolution_width: '1280', resolution_height: '720'
   };

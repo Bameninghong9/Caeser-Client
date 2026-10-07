@@ -86,6 +86,17 @@ function createLogWindowManager(controller) {
     return { logs, profileName: activeProfile, running: isRunning };
   });
 
+  ipcMain.handle('log-copy', (event, text) => {
+    if (!logWin || event.senderFrame !== logWin.webContents.mainFrame) return false;
+    try {
+      const { clipboard } = require('electron');
+      clipboard.writeText(String(text ?? ''));
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
   ipcMain.handle('log-window-action', (event, action) => {
     if (!logWin || event.senderFrame !== logWin.webContents.mainFrame) return;
     if (action === 'minimize') logWin.minimize();
