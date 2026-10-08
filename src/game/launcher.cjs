@@ -171,7 +171,9 @@ async function prepare({ root, version, mode, instanceKey, javaPath, resources, 
     const candidatePaths = [
       path.join(resources, 'caeserclient-1.0.0.jar'),
       path.resolve(__dirname, '../../resources/caeserclient-1.0.0.jar'),
-      path.join(process.cwd(), 'resources', 'caeserclient-1.0.0.jar')
+      path.join(process.cwd(), 'resources', 'caeserclient-1.0.0.jar'),
+      'C:\\Users\\thorb\\Documents\\ChatGPT\\Caeser Client\\resources\\caeserclient-1.0.0.jar',
+      'C:\\Users\\thorb\\.gemini\\antigravity\\scratch\\BameClient\\build\\libs\\caeserclient-1.0.0.jar'
     ];
     let newestSource = candidatePaths[0];
     let newestMtime = 0;
@@ -184,7 +186,12 @@ async function prepare({ root, version, mode, instanceKey, javaPath, resources, 
         }
       } catch {}
     }
-    await fs.copyFile(newestSource, path.join(mods, 'caeserclient-1.0.0.jar'));
+    const targetJar = path.join(mods, 'caeserclient-1.0.0.jar');
+    let targetMtime = 0;
+    try { targetMtime = (await fs.stat(targetJar)).mtimeMs; } catch {}
+    if (!targetMtime || newestMtime > targetMtime) {
+      await fs.copyFile(newestSource, targetJar);
+    }
     const apiVersion = '0.140.2+1.21.11';
     const name = `fabric-api-${apiVersion}.jar`;
     const url = `https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/${apiVersion}/${name}`;

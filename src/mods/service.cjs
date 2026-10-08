@@ -189,8 +189,30 @@ class Mods {
     const modsDir = path.join(folder, 'mods');
     await fs.mkdir(modsDir, { recursive: true });
     const modFile = 'caeserclient-1.0.0.jar';
-    const sourcePath = path.join(resourcesPath, modFile);
-    await fs.copyFile(sourcePath, path.join(modsDir, modFile));
+    const candidatePaths = [
+      path.join(resourcesPath, modFile),
+      path.resolve(__dirname, '../../resources', modFile),
+      path.join(process.cwd(), 'resources', modFile),
+      'C:\\Users\\thorb\\Documents\\ChatGPT\\Caeser Client\\resources\\caeserclient-1.0.0.jar',
+      'C:\\Users\\thorb\\.gemini\\antigravity\\scratch\\BameClient\\build\\libs\\caeserclient-1.0.0.jar'
+    ];
+    let newestSource = candidatePaths[0];
+    let newestMtime = 0;
+    for (const p of candidatePaths) {
+      try {
+        const st = await fs.stat(p);
+        if (st.mtimeMs > newestMtime) {
+          newestMtime = st.mtimeMs;
+          newestSource = p;
+        }
+      } catch {}
+    }
+    const targetJar = path.join(modsDir, modFile);
+    let targetMtime = 0;
+    try { targetMtime = (await fs.stat(targetJar)).mtimeMs; } catch {}
+    if (!targetMtime || newestMtime > targetMtime) {
+      await fs.copyFile(newestSource, targetJar);
+    }
     let fabricAddition = null;
     try {
       const files = await fs.readdir(modsDir);
