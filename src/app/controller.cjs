@@ -12,11 +12,18 @@ const { DiscordRpcClient } = require('../shared/discord-rpc.cjs');
 const { createLogParser } = require('../game/log-parser.cjs');
 const { diagnoseCrash, executeAutoFix } = require('../game/crash-doctor.cjs');
 const themes = ['Cyberpunk','Ultraviolet','Toxic','Inferno','Glacier','Bloodmoon','Aurora','Bubblegum','Limelight','Sunset','Electric','Nebula','Goldrush','Emerald','Plasma','Crimson'];
+const DEFAULT_COSMETICS = {
+  wings: { type: 'none', color: '#a855f7' },
+  head: { type: 'none', color: '#facc15' },
+  pet: { type: 'none', color: '#38bdf8', customPlayer: '', customSkinUrl: '' }
+};
+
 class Controller {
   constructor({ directory, encryption, resources, appVersion, emit, openBrowser }) {
     this.store = new Store(directory, encryption); this.root = path.join(directory, 'minecraft');
     Object.assign(this, { resources, appVersion, emit, openBrowser });
     this.maxMemoryMb = Math.max(1024, Math.min(65536, Math.floor(os.totalmem() / 1073741824 - 2) * 1024));
+
     this.profiles = new Profiles(this.store, this.maxMemoryMb);
     this.accounts = []; this.busy = false; this.game = null; this.loginController = null;
     this.secrets = {};
@@ -27,7 +34,8 @@ class Controller {
       assertIdle:()=>{if(this.busy || this.game) throw new Error('Bitte zuerst Minecraft beenden.');},report:data=>this.emit('mod-progress',data)});
   }
   async load() {
-    this.settings = { theme: 'Ultraviolet', customAccent: '', atmosphere: 'obsidian', glow: 'subtle', clientId: '', javaPath: '', activeAccount: '', activeSkinId: 'account', hiddenSkins: [], skinNames: {}, language: 'de', animations: true, autoOpenLog: true, discordRpc: true, customWallpaper: null, ...await this.store.read('settings.json', {}) };
+    this.settings = { theme: 'Ultraviolet', customAccent: '', atmosphere: 'obsidian', glow: 'subtle', clientId: '', javaPath: '', activeAccount: '', activeSkinId: 'account', hiddenSkins: [], skinNames: {}, language: 'de', animations: true, autoOpenLog: true, discordRpc: true, customWallpaper: null, cosmetics: DEFAULT_COSMETICS, ...await this.store.read('settings.json', {}) };
+    if (!this.settings.cosmetics) this.settings.cosmetics = DEFAULT_COSMETICS;
     this.skins = await this.store.read('skins.json', []);
     try { this.wallpaper = await this.store.read('wallpaper.json', null); } catch { this.wallpaper = null; }
     await this.profiles.load(this.settings);
@@ -55,6 +63,7 @@ class Controller {
     activeProfileId: this.profiles.data.activeId, maxMemoryMb: this.maxMemoryMb, root: this.root, busy: this.busy, running: !!this.game, appVersion: this.appVersion,
     curseforgeConfigured: Boolean(this.secrets.curseforgeKey || process.env.CAESER_CURSEFORGE_KEY || DEFAULT_CURSEFORGE_KEY),
     skins: this.skins, activeSkinId: this.settings.activeSkinId || 'account',
+    cosmetics: this.settings.cosmetics || DEFAULT_COSMETICS,
     wallpaper: this.wallpaper ? { name: this.wallpaper.name, type: this.wallpaper.type, opacity: this.settings.customWallpaper?.opacity ?? 40, blur: this.settings.customWallpaper?.blur ?? 0 } : null }; }
   async getSkins() { return this.skins; }
   async addSkin({ name, data }) {
@@ -105,6 +114,50 @@ class Controller {
     this.settings.activeSkinId = id;
     await this.saveSettings();
     return this.state();
+  }
+  async fetchPlayerSkin(name) {
+    const clean = (name || '').trim();
+    if (!clean || !/^[a-zA-Z0-9_]{1,16}$/.test(clean)) throw new Error('Ungültiger Minecraft-Spielername (nur A-Z, 0-9, _, max 16 Zeichen).');
+    const cdns = [
+      `https://minotar.net/skin/${encodeURIComponent(clean)}`,
+      `https://mc-heads.net/skin/${encodeURIComponent(clean)}`
+    ];
+    for (const url of cdns) {
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        if (res.ok) {
+          const buf = Buffer.from(await res.arrayBuffer());
+          if (buf.length > 100 && buf.length < 1048576) {
+            return { ok: true, player: clean, dataUrl: `data:image/png;base64,${buf.toString('base64')}` };
+          }
+        }
+      } catch {}
+    }
+    try {
+      const pRes = await fetch(`https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(clean)}`, { signal: AbortSignal.timeout(6000) });
+      if (pRes.ok) {
+        const profile = await pRes.json();
+        if (profile?.id) {
+          const sRes = await fetch(`https://sessionserver.mojang.com/session/minecraft/profile/${profile.id}`, { signal: AbortSignal.timeout(6000) });
+          if (sRes.ok) {
+            const sess = await sRes.json();
+            const prop = sess.properties?.find(p => p.name === 'textures');
+            if (prop?.value) {
+              const decoded = JSON.parse(Buffer.from(prop.value, 'base64').toString('utf8'));
+              const skinUrl = decoded.textures?.SKIN?.url;
+              if (skinUrl) {
+                const imgRes = await fetch(skinUrl, { signal: AbortSignal.timeout(8000) });
+                if (imgRes.ok) {
+                  const buf = Buffer.from(await imgRes.arrayBuffer());
+                  return { ok: true, player: clean, dataUrl: `data:image/png;base64,${buf.toString('base64')}` };
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch {}
+    throw new Error(`Konnte den Skin für "${clean}" nicht finden oder laden.`);
   }
   async getWallpaper() { return this.wallpaper; }
   async setWallpaper({ data, type, name, opacity, blur }) {
@@ -198,6 +251,25 @@ class Controller {
     if ('activeSkinId' in patch) {
       next.activeSkinId = String(patch.activeSkinId);
     }
+    if ('cosmetics' in patch && patch.cosmetics && typeof patch.cosmetics === 'object') {
+      const cur = next.cosmetics || { ...DEFAULT_COSMETICS };
+      next.cosmetics = {
+        wings: {
+          type: ['none', 'angel', 'dragon'].includes(patch.cosmetics.wings?.type) ? patch.cosmetics.wings.type : (cur.wings?.type || 'none'),
+          color: (typeof patch.cosmetics.wings?.color === 'string' && /^#[0-9a-f]{6}$/i.test(patch.cosmetics.wings.color)) ? patch.cosmetics.wings.color : (cur.wings?.color || '#a855f7')
+        },
+        head: {
+          type: ['none', 'halo', 'horns'].includes(patch.cosmetics.head?.type) ? patch.cosmetics.head.type : (cur.head?.type || 'none'),
+          color: (typeof patch.cosmetics.head?.color === 'string' && /^#[0-9a-f]{6}$/i.test(patch.cosmetics.head.color)) ? patch.cosmetics.head.color : (cur.head?.color || '#facc15')
+        },
+        pet: {
+          type: ['none', 'self', 'custom', 'cube', 'ghost'].includes(patch.cosmetics.pet?.type) ? patch.cosmetics.pet.type : (cur.pet?.type || 'none'),
+          color: (typeof patch.cosmetics.pet?.color === 'string' && /^#[0-9a-f]{6}$/i.test(patch.cosmetics.pet.color)) ? patch.cosmetics.pet.color : (cur.pet?.color || '#38bdf8'),
+          customPlayer: typeof patch.cosmetics.pet?.customPlayer === 'string' ? patch.cosmetics.pet.customPlayer.slice(0, 32) : (cur.pet?.customPlayer || ''),
+          customSkinUrl: typeof patch.cosmetics.pet?.customSkinUrl === 'string' ? patch.cosmetics.pet.customSkinUrl : (cur.pet?.customSkinUrl || '')
+        }
+      };
+    }
     if ('activeAccount' in patch) { if (!this.accounts.some(a => a.id === patch.activeAccount)) throw new Error('Konto nicht gefunden.'); next.activeAccount = patch.activeAccount; }
     if (patch.javaPath === '') next.javaPath = '';
     await this.store.write('settings.json', next); this.settings = next; return this.state();
@@ -241,7 +313,7 @@ class Controller {
     let account = this.accounts.find(a => a.id === this.settings.activeAccount);
     if (!account) throw new Error('Bitte zuerst mit einem Microsoft-Konto anmelden.');
     this.busy = true;
-    const options = { ...profile, instanceKey: instanceKey(profile), javaPath: this.settings.javaPath };
+    const options = { ...profile, instanceKey: instanceKey(profile), javaPath: this.settings.javaPath, cosmetics: this.settings.cosmetics || DEFAULT_COSMETICS };
     const report = progress => this.emit('progress', progress); report({ stage: 'Konto wird geprüft', percent: null });
     try {
       account = await auth.refresh(account); await this.updateAccount(account);

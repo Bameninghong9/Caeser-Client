@@ -81,7 +81,7 @@ async function manifest(root) {
     try { return { ...JSON.parse(await fs.readFile(file, 'utf8')), cached: true }; } catch { throw error; }
   }
 }
-async function prepare({ root, version, mode, instanceKey, javaPath, resources, report }) {
+async function prepare({ root, version, mode, instanceKey, javaPath, resources, report, cosmetics }) {
   const versions = await manifest(root);
   const entry = versions.versions.find(v => v.id === version);
   if (!entry) throw new Error('Diese Version steht nicht im offiziellen Minecraft-Verzeichnis.');
@@ -168,7 +168,23 @@ async function prepare({ root, version, mode, instanceKey, javaPath, resources, 
     report({ stage: 'Caeser-Mod wird eingerichtet', percent: null });
     const mods = path.join(instance, 'mods');
     await fs.mkdir(mods, { recursive: true });
-    await fs.copyFile(path.join(resources, 'caeserclient-1.0.0.jar'), path.join(mods, 'caeserclient-1.0.0.jar'));
+    const candidatePaths = [
+      path.join(resources, 'caeserclient-1.0.0.jar'),
+      path.resolve(__dirname, '../../resources/caeserclient-1.0.0.jar'),
+      path.join(process.cwd(), 'resources', 'caeserclient-1.0.0.jar')
+    ];
+    let newestSource = candidatePaths[0];
+    let newestMtime = 0;
+    for (const p of candidatePaths) {
+      try {
+        const st = await fs.stat(p);
+        if (st.mtimeMs > newestMtime) {
+          newestMtime = st.mtimeMs;
+          newestSource = p;
+        }
+      } catch {}
+    }
+    await fs.copyFile(newestSource, path.join(mods, 'caeserclient-1.0.0.jar'));
     const apiVersion = '0.140.2+1.21.11';
     const name = `fabric-api-${apiVersion}.jar`;
     const url = `https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/${apiVersion}/${name}`;
@@ -178,6 +194,14 @@ async function prepare({ root, version, mode, instanceKey, javaPath, resources, 
     if (!/^[a-f\d]{40}$/i.test(checksum)) throw new Error('Ungültige Fabric-API-Prüfsumme.');
     await download(url, path.join(mods, name), checksum);
   }
+  const clientConfigDir = path.join(instance, 'config', 'CaeserClient');
+  await fs.mkdir(clientConfigDir, { recursive: true });
+  const cosmeticsData = cosmetics || {
+    wings: { type: 'none', color: '#a855f7' },
+    head: { type: 'none', color: '#facc15' },
+    pet: { type: 'none', color: '#38bdf8' }
+  };
+  await fs.writeFile(path.join(clientConfigDir, 'cosmetics.json'), JSON.stringify(cosmeticsData, null, 2), 'utf8');
   return { java, metadata, instance, natives, classpath, mainClass, extraArguments, assetRoot, virtualRoot, loggingArgument, libraryRoot };
 }
 function launchArguments(prepared, account, memory) {
@@ -187,7 +211,7 @@ function launchArguments(prepared, account, memory) {
     auth_session: `token:${account.accessToken}:${account.id}`, auth_xuid: account.xuid || '', clientid: account.clientId,
     version_name: metadata.id, version_type: metadata.type, game_directory: instance, assets_root: assetRoot,
     assets_index_name: metadata.assetIndex.id, game_assets: virtualRoot, user_type: 'msa', user_properties: '{}',
-    natives_directory: natives, launcher_name: 'Caeser Client', launcher_version: '0.3.15',
+    natives_directory: natives, launcher_name: 'Caeser Client', launcher_version: '0.3.18',
     classpath: classpath.join(path.delimiter), classpath_separator: path.delimiter, library_directory: libraryRoot,
     resolution_width: '1280', resolution_height: '720'
   };

@@ -28,6 +28,7 @@ function register(controller, win, pageURL, logManager) {
   handle('skin-remove', id => controller.removeSkin(id));
   handle('skin-rename', input => controller.renameSkin(input.id, input.name));
   handle('skin-select', id => controller.selectSkin(id));
+  handle('player-skin-get', name => controller.fetchPlayerSkin(name));
   handle('skin-pick-file', async () => {
     const result = await dialog.showOpenDialog(win, {
       title: 'Minecraft-Skin auswählen',

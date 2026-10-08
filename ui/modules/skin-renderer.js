@@ -98,6 +98,93 @@ function mat4RotateZ(out, a, rad) {
   out[6] = a12*c - a02*s; out[7] = a13*c - a03*s;
   return out;
 }
+function mat4Copy(out, a) {
+  for (let i = 0; i < 16; i++) out[i] = a[i];
+  return out;
+}
+function mat4Scale(out, a, x, y, z) {
+  out[0] = a[0] * x; out[1] = a[1] * x; out[2] = a[2] * x; out[3] = a[3] * x;
+  out[4] = a[4] * y; out[5] = a[5] * y; out[6] = a[6] * y; out[7] = a[7] * y;
+  out[8] = a[8] * z; out[9] = a[9] * z; out[10] = a[10] * z; out[11] = a[11] * z;
+  out[12] = a[12]; out[13] = a[13]; out[14] = a[14]; out[15] = a[15];
+  return out;
+}
+
+function buildBoxExtents(gl, x0, x1, y0, y1, z0, z1, uvMap = null) {
+  const uv = uvMap || {
+    front: [0,0,1,1], back: [0,0,1,1],
+    top: [0,0,1,1], bottom: [0,0,1,1],
+    right: [0,0,1,1], left: [0,0,1,1]
+  };
+  const vertices = [];
+  const indices = [];
+  let vIndex = 0;
+
+  function addFace(p0, p1, p2, p3, uvCoords, norm) {
+    const [u, v, uw, vh] = uvCoords;
+    const u0 = u / 64, u1 = (u + uw) / 64;
+    const v0 = v / 64, v1 = (v + vh) / 64;
+    vertices.push(
+      p0[0], p0[1], p0[2], u0, v0, norm[0], norm[1], norm[2],
+      p1[0], p1[1], p1[2], u0, v1, norm[0], norm[1], norm[2],
+      p2[0], p2[1], p2[2], u1, v1, norm[0], norm[1], norm[2],
+      p3[0], p3[1], p3[2], u1, v0, norm[0], norm[1], norm[2]
+    );
+    indices.push(vIndex, vIndex + 1, vIndex + 2, vIndex, vIndex + 2, vIndex + 3);
+    vIndex += 4;
+  }
+
+  // Front (+Z)
+  addFace([x0,y1,z1], [x0,y0,z1], [x1,y0,z1], [x1,y1,z1], uv.front, [0, 0, 1]);
+  // Back (-Z)
+  addFace([x1,y1,z0], [x1,y0,z0], [x0,y0,z0], [x0,y1,z0], uv.back, [0, 0, -1]);
+  // Top (+Y)
+  addFace([x0,y1,z0], [x0,y1,z1], [x1,y1,z1], [x1,y1,z0], uv.top, [0, 1, 0]);
+  // Bottom (-Y)
+  addFace([x0,y0,z1], [x0,y0,z0], [x1,y0,z0], [x1,y0,z1], uv.bottom, [0, -1, 0]);
+  // Right (-X)
+  addFace([x0,y1,z0], [x0,y0,z0], [x0,y0,z1], [x0,y1,z1], uv.right, [-1, 0, 0]);
+  // Left (+X)
+  addFace([x1,y1,z1], [x1,y0,z1], [x1,y0,z0], [x1,y1,z0], uv.left, [1, 0, 0]);
+
+  const vbo = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+  const ibo = gl.createBuffer();
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+
+  return { vbo, ibo, count: indices.length };
+}
+
+function hexToRgb(hex, alpha = 1.0) {
+  if (!hex || typeof hex !== 'string') return [1.0, 1.0, 1.0, alpha];
+  let clean = hex.replace('#', '');
+  if (clean.length === 3) clean = clean.split('').map(c => c + c).join('');
+  const num = parseInt(clean, 16);
+  if (isNaN(num)) return [1.0, 1.0, 1.0, alpha];
+  return [
+    ((num >> 16) & 255) / 255,
+    ((num >> 8) & 255) / 255,
+    (num & 255) / 255,
+    alpha
+  ];
+}
+
+function buildBoxMesh(gl, width, height, depth, expand = 0) {
+  const dummyUv = { front: [0,0,1,1], back: [0,0,1,1], top: [0,0,1,1], bottom: [0,0,1,1], right: [0,0,1,1], left: [0,0,1,1] };
+  const { vertices, indices } = buildBox(width, height, depth, dummyUv, expand);
+  const vbo = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+  const ibo = gl.createBuffer();
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+  return { vbo, ibo, count: indices.length };
+}
 
 // Generate box vertices [pos(3), uv(2), normal(3)] -> 8 floats per vertex
 function buildBox(width, height, depth, uvMap, expand = 0) {
@@ -196,11 +283,19 @@ export class SkinRenderer {
   constructor(canvas, options = {}) {
     this.canvas = canvas;
     this.options = options;
+    this.cosmetics = options.cosmetics || {
+      wings: { type: 'none', color: '#a855f7' },
+      head: { type: 'none', color: '#facc15' },
+      pet: { type: 'none', color: '#38bdf8' }
+    };
+    this.drag = { active: false, lastX: 0, lastY: 0, rotX: 0, rotY: 0 };
     const glOpts = { alpha: true, antialias: true, preserveDrawingBuffer: Boolean(options.preserveDrawingBuffer) };
     this.gl = canvas.getContext('webgl', glOpts) || canvas.getContext('experimental-webgl', glOpts);
     this.isSupported = Boolean(this.gl);
     this.currentSkinImg = null;
     this.texture = null;
+    this.petTexture = null;
+    this.currentPetSkinUrl = null;
     this.mouse = { x: 0, y: 0, targetX: 0, targetY: 0 };
     this.animFrame = null;
     this.lastTime = 0;
@@ -218,6 +313,62 @@ export class SkinRenderer {
       this.startLoop();
     } else {
       this.render(0);
+    }
+  }
+
+  setCosmetics(cosmetics) {
+    if (!cosmetics) return;
+    this.cosmetics = {
+      wings: { type: cosmetics.wings?.type || 'none', color: cosmetics.wings?.color || '#a855f7' },
+      head: { type: cosmetics.head?.type || 'none', color: cosmetics.head?.color || '#facc15' },
+      pet: {
+        type: cosmetics.pet?.type || 'none',
+        color: cosmetics.pet?.color || '#38bdf8',
+        customPlayer: cosmetics.pet?.customPlayer || '',
+        customSkinUrl: cosmetics.pet?.customSkinUrl || ''
+      }
+    };
+    if (this.cosmetics.pet.type === 'custom' && this.cosmetics.pet.customSkinUrl) {
+      if (this.currentPetSkinUrl !== this.cosmetics.pet.customSkinUrl) {
+        this.setPetSkin(this.cosmetics.pet.customSkinUrl);
+      }
+    } else if (this.cosmetics.pet.type !== 'custom') {
+      this.currentPetSkinUrl = null;
+      this.petTexture = null;
+    }
+    if (this.options?.static) this.render(0);
+  }
+
+  setPetSkin(skinDataUrl) {
+    if (!skinDataUrl) {
+      this.petTexture = null;
+      this.currentPetSkinUrl = null;
+      return;
+    }
+    this.currentPetSkinUrl = skinDataUrl;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      this.uploadPetTexture(img);
+    };
+    img.src = skinDataUrl;
+  }
+
+  uploadPetTexture(imageSource) {
+    if (!this.gl) return;
+    const gl = this.gl;
+    if (!this.petTexture) {
+      this.petTexture = gl.createTexture();
+    }
+    gl.bindTexture(gl.TEXTURE_2D, this.petTexture);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, imageSource);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    if (this.texture) {
+      gl.bindTexture(gl.TEXTURE_2D, this.texture);
     }
   }
 
@@ -247,7 +398,13 @@ export class SkinRenderer {
       varying vec2 v_texCoord;
       varying float v_light;
       uniform sampler2D u_texture;
+      uniform float u_useCustomColor;
+      uniform vec4 u_customColor;
       void main() {
+        if (u_useCustomColor > 0.5) {
+          gl_FragColor = vec4(u_customColor.rgb * v_light, u_customColor.a);
+          return;
+        }
         vec4 col = texture2D(u_texture, v_texCoord);
         if (col.a < 0.1) discard;
         gl_FragColor = vec4(col.rgb * v_light, col.a);
@@ -275,7 +432,9 @@ export class SkinRenderer {
     this.uniforms = {
       mvp: gl.getUniformLocation(prog, 'u_mvp'),
       model: gl.getUniformLocation(prog, 'u_model'),
-      texture: gl.getUniformLocation(prog, 'u_texture')
+      texture: gl.getUniformLocation(prog, 'u_texture'),
+      useCustomColor: gl.getUniformLocation(prog, 'u_useCustomColor'),
+      customColor: gl.getUniformLocation(prog, 'u_customColor')
     };
 
     this.texture = gl.createTexture();
@@ -359,6 +518,93 @@ export class SkinRenderer {
         pos: part.pos
       };
     });
+
+    // Pre-create 3D cosmetic meshes
+    this.cosmeticMeshes = {
+      // Angel Wings: hinge at (0, 0, 0), extends +X
+      angelBone1: buildBoxExtents(gl, 0, 7.5, 0, 2.8, -0.6, 0.6),
+      angelBone2: buildBoxExtents(gl, 7.0, 14.0, -3.5, 2.2, -0.5, 0.5),
+      angelFeatherLong: buildBoxExtents(gl, 6.0, 16.5, -14.0, -1.0, -0.3, 0.3),
+      angelFeatherMid: buildBoxExtents(gl, 3.0, 11.5, -10.5, 0.5, -0.35, 0.35),
+      angelFeatherShort: buildBoxExtents(gl, 0.5, 6.5, -6.5, 1.0, -0.4, 0.4),
+
+      // Dragon Wings: hinge at (0, 0, 0), extends +X
+      dragonArm: buildBoxExtents(gl, 0, 7.5, 0, 4.5, -0.7, 0.7),
+      dragonSpike: buildBoxExtents(gl, 6.5, 8.2, 4.2, 8.2, -0.5, 0.5),
+      dragonRibTop: buildBoxExtents(gl, 7.0, 15.5, 2.0, 5.0, -0.5, 0.5),
+      dragonRibMid: buildBoxExtents(gl, 7.0, 14.5, -2.8, 0.5, -0.5, 0.5),
+      dragonRibBot: buildBoxExtents(gl, 5.0, 11.0, -8.0, -3.5, -0.5, 0.5),
+      dragonWebTop: buildBoxExtents(gl, 2.5, 14.5, 0.2, 3.5, -0.2, 0.2),
+      dragonWebBot: buildBoxExtents(gl, 2.0, 12.5, -6.2, -0.5, -0.2, 0.2),
+
+      // Halo (ring)
+      haloBarFB: buildBoxMesh(gl, 8, 0.8, 0.8),
+      haloBarLR: buildBoxMesh(gl, 0.8, 0.8, 8),
+      // Horns
+      hornBase: buildBoxMesh(gl, 1.6, 2.4, 1.6),
+      hornMid: buildBoxMesh(gl, 1.3, 2.6, 1.3),
+      hornTip: buildBoxMesh(gl, 1.0, 2.2, 1.0),
+      // Pet Cube
+      petCube: buildBoxMesh(gl, 3.8, 3.8, 3.8),
+      petOrbiter: buildBoxMesh(gl, 1.3, 1.3, 1.3),
+      // Pet Ghost
+      ghostHead: buildBoxMesh(gl, 3.8, 4.0, 3.8),
+      ghostBody: buildBoxMesh(gl, 2.6, 2.6, 2.6),
+      ghostTail: buildBoxMesh(gl, 1.6, 1.8, 1.6)
+    };
+
+    // Pre-create Chibi Mini-Player for Shoulder Pet (Self skin or Custom Player skin)
+    const miniParts = [
+      { id: 'miniHead', w: 4.6, h: 4.6, d: 4.6, pivot: [0, 0, 0], pos: [0, 3.2, 0],
+        uv: { front: [8,8,8,8], back: [24,8,8,8], top: [8,0,8,8], bottom: [16,0,8,8], right: [0,8,8,8], left: [16,8,8,8] } },
+      { id: 'miniHat', w: 4.6, h: 4.6, d: 4.6, pivot: [0, 0, 0], pos: [0, 3.2, 0], expand: 0.32,
+        uv: { front: [40,8,8,8], back: [56,8,8,8], top: [40,0,8,8], bottom: [48,0,8,8], right: [32,8,8,8], left: [48,8,8,8] } },
+
+      { id: 'miniTorso', w: 3.8, h: 4.8, d: 2.2, pivot: [0, 0, 0], pos: [0, -1.6, 0],
+        uv: { front: [20,20,8,12], back: [32,20,8,12], top: [20,16,8,4], bottom: [28,16,8,4], right: [16,20,4,12], left: [28,20,4,12] } },
+      { id: 'miniJacket', w: 3.8, h: 4.8, d: 2.2, pivot: [0, 0, 0], pos: [0, -1.6, 0], expand: 0.26,
+        uv: { front: [20,36,8,12], back: [32,36,8,12], top: [20,32,8,4], bottom: [28,32,8,4], right: [16,36,4,12], left: [28,36,4,12] } },
+
+      { id: 'miniRightArm', w: 1.8, h: 4.5, d: 1.8, pivot: [-2.6, 0.4, 0], pos: [-2.6, -1.6, 0],
+        uv: { front: [44,20,4,12], back: [52,20,4,12], top: [44,16,4,4], bottom: [48,16,4,4], right: [40,20,4,12], left: [48,20,4,12] } },
+      { id: 'miniRightSleeve', w: 1.8, h: 4.5, d: 1.8, pivot: [-2.6, 0.4, 0], pos: [-2.6, -1.6, 0], expand: 0.2,
+        uv: { front: [44,36,4,12], back: [52,36,4,12], top: [44,32,4,4], bottom: [48,32,4,4], right: [40,36,4,12], left: [48,36,4,12] } },
+
+      { id: 'miniLeftArm', w: 1.8, h: 4.5, d: 1.8, pivot: [2.6, 0.4, 0], pos: [2.6, -1.6, 0],
+        uv: { front: [36,52,4,12], back: [44,52,4,12], top: [36,48,4,4], bottom: [40,48,4,4], right: [32,52,4,12], left: [40,52,4,12] } },
+      { id: 'miniLeftSleeve', w: 1.8, h: 4.5, d: 1.8, pivot: [2.6, 0.4, 0], pos: [2.6, -1.6, 0], expand: 0.2,
+        uv: { front: [52,52,4,12], back: [60,52,4,12], top: [52,48,4,4], bottom: [56,48,4,4], right: [48,52,4,12], left: [56,52,4,12] } },
+
+      { id: 'miniRightLeg', w: 1.8, h: 4.5, d: 1.8, pivot: [-0.9, -3.9, 0], pos: [-0.9, -6.1, 0],
+        uv: { front: [4,20,4,12], back: [12,20,4,12], top: [4,16,4,4], bottom: [8,16,4,4], right: [0,20,4,12], left: [8,20,4,12] } },
+      { id: 'miniRightPant', w: 1.8, h: 4.5, d: 1.8, pivot: [-0.9, -3.9, 0], pos: [-0.9, -6.1, 0], expand: 0.2,
+        uv: { front: [4,36,4,12], back: [12,36,4,12], top: [4,32,4,4], bottom: [8,32,4,4], right: [0,36,4,12], left: [8,36,4,12] } },
+
+      { id: 'miniLeftLeg', w: 1.8, h: 4.5, d: 1.8, pivot: [0.9, -3.9, 0], pos: [0.9, -6.1, 0],
+        uv: { front: [20,52,4,12], back: [28,52,4,12], top: [20,48,4,4], bottom: [24,48,4,4], right: [16,52,4,12], left: [24,52,4,12] } },
+      { id: 'miniLeftPant', w: 1.8, h: 4.5, d: 1.8, pivot: [0.9, -3.9, 0], pos: [0.9, -6.1, 0], expand: 0.2,
+        uv: { front: [4,52,4,12], back: [12,52,4,12], top: [4,48,4,4], bottom: [8,48,4,4], right: [0,52,4,12], left: [8,52,4,12] } }
+    ];
+
+    this.miniMeshes = miniParts.map(part => {
+      const { vertices, indices } = buildBox(part.w, part.h, part.d, part.uv, part.expand || 0);
+      const vbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+      gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+      const ibo = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+      return {
+        id: part.id,
+        vbo,
+        ibo,
+        count: indices.length,
+        pivot: part.pivot,
+        pos: part.pos
+      };
+    });
   }
 
   loadDefaultSkin() {
@@ -395,8 +641,9 @@ export class SkinRenderer {
   }
 
   bindEvents() {
-    const stage = document.querySelector('.play-stage') || this.canvas;
+    const stage = this.canvas.closest('.play-stage') || this.canvas.closest('.cosmetics-preview-panel') || document.querySelector('.play-stage') || this.canvas;
     stage.addEventListener('pointermove', e => {
+      if (this.drag.active) return;
       const rect = this.canvas.getBoundingClientRect();
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height * 0.35;
@@ -406,8 +653,30 @@ export class SkinRenderer {
       this.mouse.targetY = Math.max(-1, Math.min(1, dy));
     });
     stage.addEventListener('pointerleave', () => {
+      if (this.drag.active) return;
       this.mouse.targetX = 0;
       this.mouse.targetY = 0;
+    });
+
+    this.canvas.addEventListener('pointerdown', e => {
+      this.drag.active = true;
+      this.drag.lastX = e.clientX;
+      this.drag.lastY = e.clientY;
+      try { this.canvas.setPointerCapture?.(e.pointerId); } catch {}
+    });
+    window.addEventListener('pointermove', e => {
+      if (!this.drag.active) return;
+      const dx = e.clientX - this.drag.lastX;
+      const dy = e.clientY - this.drag.lastY;
+      this.drag.lastX = e.clientX;
+      this.drag.lastY = e.clientY;
+      this.drag.rotY += dx * 0.015;
+      this.drag.rotX = Math.max(-0.6, Math.min(0.6, this.drag.rotX + dy * 0.01));
+    });
+    window.addEventListener('pointerup', () => {
+      if (this.drag.active) {
+        this.drag.active = false;
+      }
     });
   }
 
@@ -468,8 +737,8 @@ export class SkinRenderer {
     // Base root position: centered, dynamic 3/4 turn towards viewer
     const rootMat = mat4Identity(mat4Create());
     mat4Translate(rootMat, rootMat, 0, 3.5 + hover, -58);
-    mat4RotateX(rootMat, rootMat, (5 * Math.PI / 180) + this.mouse.y * 0.12);
-    mat4RotateY(rootMat, rootMat, (-22 * Math.PI / 180) + this.mouse.x * 0.25);
+    mat4RotateX(rootMat, rootMat, (5 * Math.PI / 180) + this.mouse.y * 0.12 + this.drag.rotX);
+    mat4RotateY(rootMat, rootMat, (-22 * Math.PI / 180) + this.mouse.x * 0.25 + this.drag.rotY);
 
     // Pose transformations for each limb:
     // Right Arm: confident action pose (forward, elbow out)
@@ -534,6 +803,8 @@ export class SkinRenderer {
 
     const mvp = mat4Create();
     const model = mat4Create();
+    let torsoMat = null;
+    let headMat = null;
 
     for (const mesh of this.meshes) {
       const pose = poses[mesh.id] || { rx: 0, ry: 0, rz: 0 };
@@ -547,6 +818,9 @@ export class SkinRenderer {
       if (pose.rx) mat4RotateX(model, model, pose.rx);
       if (pose.ry) mat4RotateY(model, model, pose.ry);
       mat4Translate(model, model, -mesh.pivot[0] + mesh.pos[0], -mesh.pivot[1] + mesh.pos[1], -mesh.pivot[2] + mesh.pos[2]);
+
+      if (mesh.id === 'torso') torsoMat = mat4Copy(mat4Create(), model);
+      if (mesh.id === 'head') headMat = mat4Copy(mat4Create(), model);
 
       // MVP = proj * model
       mat4Multiply(mvp, proj, model);
@@ -566,6 +840,271 @@ export class SkinRenderer {
 
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.ibo);
       gl.drawElements(gl.TRIANGLES, mesh.count, gl.UNSIGNED_SHORT, 0);
+    }
+
+    // Render 3D Cosmetics if active
+    if (this.cosmetics && this.cosmeticMeshes) {
+      gl.disable(gl.CULL_FACE); // Two-sided rendering for wings and accessories
+      gl.uniform1f(this.uniforms.useCustomColor, 1.0);
+
+      const drawPart = (mesh, pMat, col) => {
+        if (!mesh) return;
+        if (col) {
+          gl.uniform4f(this.uniforms.customColor, col[0], col[1], col[2], col[3] ?? 1.0);
+        }
+        mat4Multiply(mvp, proj, pMat);
+        gl.uniformMatrix4fv(this.uniforms.mvp, false, mvp);
+        gl.uniformMatrix4fv(this.uniforms.model, false, pMat);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, mesh.vbo);
+        gl.enableVertexAttribArray(this.attribs.position);
+        gl.vertexAttribPointer(this.attribs.position, 3, gl.FLOAT, false, 32, 0);
+
+        gl.enableVertexAttribArray(this.attribs.texCoord);
+        gl.vertexAttribPointer(this.attribs.texCoord, 2, gl.FLOAT, false, 32, 12);
+
+        gl.enableVertexAttribArray(this.attribs.normal);
+        gl.vertexAttribPointer(this.attribs.normal, 3, gl.FLOAT, false, 32, 20);
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.ibo);
+        gl.drawElements(gl.TRIANGLES, mesh.count, gl.UNSIGNED_SHORT, 0);
+      };
+
+      // 1. Wings (Flügel)
+      const wingType = this.cosmetics.wings?.type;
+      if ((wingType === 'angel' || wingType === 'dragon') && torsoMat) {
+        const flap = Math.sin(time * 0.0048);
+
+        if (wingType === 'angel') {
+          // Radiant golden feather tones (matching gold_wings):
+          const cBone1 = [0.98, 0.82, 0.22, 1.0];
+          const cBone2 = [0.92, 0.72, 0.16, 1.0];
+          const cFeatherLong = [1.00, 0.88, 0.30, 0.98];
+          const cFeatherMid = [0.95, 0.78, 0.20, 0.96];
+          const cFeatherShort = [0.88, 0.68, 0.14, 0.95];
+
+          // Left Angel Wing
+          const lw = mat4Copy(mat4Create(), torsoMat);
+          mat4Translate(lw, lw, 1.5, 2.5, -2.2);
+          mat4RotateY(lw, lw, 0.35 + flap * 0.45);
+          mat4RotateZ(lw, lw, -0.12 - Math.abs(flap) * 0.1);
+
+          drawPart(this.cosmeticMeshes.angelBone1, lw, cBone1);
+          drawPart(this.cosmeticMeshes.angelBone2, lw, cBone2);
+          drawPart(this.cosmeticMeshes.angelFeatherLong, lw, cFeatherLong);
+          drawPart(this.cosmeticMeshes.angelFeatherMid, lw, cFeatherMid);
+          drawPart(this.cosmeticMeshes.angelFeatherShort, lw, cFeatherShort);
+
+          // Right Angel Wing
+          const rw = mat4Copy(mat4Create(), torsoMat);
+          mat4Translate(rw, rw, -1.5, 2.5, -2.2);
+          mat4RotateY(rw, rw, -0.35 - flap * 0.45);
+          mat4RotateZ(rw, rw, 0.12 + Math.abs(flap) * 0.1);
+          mat4Scale(rw, rw, -1, 1, 1);
+
+          drawPart(this.cosmeticMeshes.angelBone1, rw, cBone1);
+          drawPart(this.cosmeticMeshes.angelBone2, rw, cBone2);
+          drawPart(this.cosmeticMeshes.angelFeatherLong, rw, cFeatherLong);
+          drawPart(this.cosmeticMeshes.angelFeatherMid, rw, cFeatherMid);
+          drawPart(this.cosmeticMeshes.angelFeatherShort, rw, cFeatherShort);
+        } else if (wingType === 'dragon') {
+          // Authentic Ender Dragon skeletal bones and deep purple membrane:
+          const cArm = [0.10, 0.10, 0.12, 1.0];
+          const cSpike = [0.30, 0.30, 0.34, 1.0];
+          const cRib = [0.15, 0.15, 0.18, 1.0];
+          const cWebTop = [0.36, 0.11, 0.52, 0.92];
+          const cWebBot = [0.24, 0.05, 0.38, 0.92];
+
+          // Left Dragon Wing
+          const lw = mat4Copy(mat4Create(), torsoMat);
+          mat4Translate(lw, lw, 1.5, 2.5, -2.2);
+          mat4RotateY(lw, lw, 0.38 + flap * 0.52);
+          mat4RotateZ(lw, lw, -0.15 - Math.abs(flap) * 0.12);
+
+          drawPart(this.cosmeticMeshes.dragonArm, lw, cArm);
+          drawPart(this.cosmeticMeshes.dragonSpike, lw, cSpike);
+          drawPart(this.cosmeticMeshes.dragonRibTop, lw, cRib);
+          drawPart(this.cosmeticMeshes.dragonRibMid, lw, cRib);
+          drawPart(this.cosmeticMeshes.dragonRibBot, lw, cRib);
+          drawPart(this.cosmeticMeshes.dragonWebTop, lw, cWebTop);
+          drawPart(this.cosmeticMeshes.dragonWebBot, lw, cWebBot);
+
+          // Right Dragon Wing
+          const rw = mat4Copy(mat4Create(), torsoMat);
+          mat4Translate(rw, rw, -1.5, 2.5, -2.2);
+          mat4RotateY(rw, rw, -0.38 - flap * 0.52);
+          mat4RotateZ(rw, rw, 0.15 + Math.abs(flap) * 0.12);
+          mat4Scale(rw, rw, -1, 1, 1);
+
+          drawPart(this.cosmeticMeshes.dragonArm, rw, cArm);
+          drawPart(this.cosmeticMeshes.dragonSpike, rw, cSpike);
+          drawPart(this.cosmeticMeshes.dragonRibTop, rw, cRib);
+          drawPart(this.cosmeticMeshes.dragonRibMid, rw, cRib);
+          drawPart(this.cosmeticMeshes.dragonRibBot, rw, cRib);
+          drawPart(this.cosmeticMeshes.dragonWebTop, rw, cWebTop);
+          drawPart(this.cosmeticMeshes.dragonWebBot, rw, cWebBot);
+        }
+      }
+
+      // 2. Head Accessories (Halo & Horns)
+      const headType = this.cosmetics.head?.type;
+      if (headType === 'halo' && headMat) {
+        // Radiant golden celestial sheen:
+        const cHaloFB = [0.98, 0.80, 0.10, 1.0];
+        const cHaloLR = [1.0, 0.88, 0.25, 1.0];
+
+        const floatBob = Math.sin(time * 0.0032) * 0.6;
+        const hm = mat4Copy(mat4Create(), headMat);
+        mat4Translate(hm, hm, 0, 9.8 + floatBob, 0);
+        mat4RotateY(hm, hm, time * 0.0016);
+        mat4RotateX(hm, hm, 0.12);
+
+        const fb1 = mat4Copy(mat4Create(), hm);
+        mat4Translate(fb1, fb1, 0, 0, 4.0);
+        drawPart(this.cosmeticMeshes.haloBarFB, fb1, cHaloFB);
+
+        const fb2 = mat4Copy(mat4Create(), hm);
+        mat4Translate(fb2, fb2, 0, 0, -4.0);
+        drawPart(this.cosmeticMeshes.haloBarFB, fb2, cHaloFB);
+
+        const lr1 = mat4Copy(mat4Create(), hm);
+        mat4Translate(lr1, lr1, -4.0, 0, 0);
+        drawPart(this.cosmeticMeshes.haloBarLR, lr1, cHaloLR);
+
+        const lr2 = mat4Copy(mat4Create(), hm);
+        mat4Translate(lr2, lr2, 4.0, 0, 0);
+        drawPart(this.cosmeticMeshes.haloBarLR, lr2, cHaloLR);
+      } else if (headType === 'horns' && headMat) {
+        // Authentic demonic horns fading from obsidian black to crimson to molten tips:
+        const cHornBase = [0.10, 0.10, 0.12, 1.0];
+        const cHornMid = [0.65, 0.12, 0.12, 1.0];
+        const cHornTip = [0.98, 0.42, 0.08, 1.0];
+
+        // Left horn
+        const lh = mat4Copy(mat4Create(), headMat);
+        mat4Translate(lh, lh, -3.2, 8.2, 2.0);
+        mat4RotateZ(lh, lh, -0.28);
+        mat4RotateX(lh, lh, -0.2);
+        drawPart(this.cosmeticMeshes.hornBase, lh, cHornBase);
+
+        const lm = mat4Copy(mat4Create(), lh);
+        mat4Translate(lm, lm, -0.7, 2.2, -0.6);
+        mat4RotateZ(lm, lm, -0.22);
+        drawPart(this.cosmeticMeshes.hornMid, lm, cHornMid);
+
+        const lt = mat4Copy(mat4Create(), lm);
+        mat4Translate(lt, lt, -0.5, 2.1, -0.5);
+        mat4RotateZ(lt, lt, -0.2);
+        drawPart(this.cosmeticMeshes.hornTip, lt, cHornTip);
+
+        // Right horn
+        const rh = mat4Copy(mat4Create(), headMat);
+        mat4Translate(rh, rh, 3.2, 8.2, 2.0);
+        mat4RotateZ(rh, rh, 0.28);
+        mat4RotateX(rh, rh, -0.2);
+        drawPart(this.cosmeticMeshes.hornBase, rh, cHornBase);
+
+        const rm = mat4Copy(mat4Create(), rh);
+        mat4Translate(rm, rm, 0.7, 2.2, -0.6);
+        mat4RotateZ(rm, rm, 0.22);
+        drawPart(this.cosmeticMeshes.hornMid, rm, cHornMid);
+
+        const rt = mat4Copy(mat4Create(), rm);
+        mat4Translate(rt, rt, 0.5, 2.1, -0.5);
+        mat4RotateZ(rt, rt, 0.2);
+        drawPart(this.cosmeticMeshes.hornTip, rt, cHornTip);
+      }
+
+      // 3. Pet / Shoulder Companion
+      const petType = this.cosmetics.pet?.type;
+      if (petType === 'self' || petType === 'custom') {
+        // Draw Chibi Mini-Player sitting on right shoulder
+        gl.uniform1f(this.uniforms.useCustomColor, 0.0);
+        if (petType === 'custom' && this.petTexture) {
+          gl.bindTexture(gl.TEXTURE_2D, this.petTexture);
+        } else {
+          gl.bindTexture(gl.TEXTURE_2D, this.texture);
+        }
+
+        const pm = mat4Copy(mat4Create(), rootMat);
+        const hoverBob = Math.sin(time * 0.0035) * 0.45;
+        // Positioned sitting gently on the player's right shoulder:
+        mat4Translate(pm, pm, -6.6, 2.2 + hoverBob, 0.4);
+
+        const petPoses = {
+          miniHead: {
+            rx: -0.05 + Math.sin(time * 0.0022) * 0.08,
+            ry: 0.35 + Math.sin(time * 0.0018) * 0.15,
+            rz: -0.08
+          },
+          miniHat: {
+            rx: -0.05 + Math.sin(time * 0.0022) * 0.08,
+            ry: 0.35 + Math.sin(time * 0.0018) * 0.15,
+            rz: -0.08
+          },
+          miniTorso: { rx: 0.06, ry: 0.05, rz: 0 },
+          miniJacket: { rx: 0.06, ry: 0.05, rz: 0 },
+          miniRightArm: { rx: -0.35, ry: 0.1, rz: -0.15 },
+          miniRightSleeve: { rx: -0.35, ry: 0.1, rz: -0.15 },
+          miniLeftArm: { rx: -0.35, ry: -0.1, rz: 0.15 },
+          miniLeftSleeve: { rx: -0.35, ry: -0.1, rz: 0.15 },
+          // Sitting pose: legs swung forward, gentle foot dangling
+          miniRightLeg: { rx: -1.22 + Math.sin(time * 0.004) * 0.12, ry: -0.05, rz: -0.05 },
+          miniRightPant: { rx: -1.22 + Math.sin(time * 0.004) * 0.12, ry: -0.05, rz: -0.05 },
+          miniLeftLeg: { rx: -1.22 - Math.sin(time * 0.004) * 0.12, ry: 0.05, rz: 0.05 },
+          miniLeftPant: { rx: -1.22 - Math.sin(time * 0.004) * 0.12, ry: 0.05, rz: 0.05 }
+        };
+
+        if (this.miniMeshes) {
+          for (const mesh of this.miniMeshes) {
+            const pose = petPoses[mesh.id] || { rx: 0, ry: 0, rz: 0 };
+            const m = mat4Copy(mat4Create(), pm);
+            mat4Translate(m, m, mesh.pivot[0], mesh.pivot[1], mesh.pivot[2]);
+            if (pose.rz) mat4RotateZ(m, m, pose.rz);
+            if (pose.rx) mat4RotateX(m, m, pose.rx);
+            if (pose.ry) mat4RotateY(m, m, pose.ry);
+            mat4Translate(m, m, -mesh.pivot[0] + mesh.pos[0], -mesh.pivot[1] + mesh.pos[1], -mesh.pivot[2] + mesh.pos[2]);
+            drawPart(mesh, m);
+          }
+        }
+        // Restore texture
+        if (this.texture) gl.bindTexture(gl.TEXTURE_2D, this.texture);
+        gl.uniform1f(this.uniforms.useCustomColor, 1.0);
+      } else if (petType === 'cube' || petType === 'ghost') {
+        const petRgb = hexToRgb(this.cosmetics.pet.color || '#38bdf8');
+        gl.uniform4f(this.uniforms.customColor, petRgb[0], petRgb[1], petRgb[2], 0.95);
+
+        const pm = mat4Copy(mat4Create(), rootMat);
+        const hoverY = Math.sin(time * 0.0035) * 1.3;
+        const swayX = Math.cos(time * 0.0022) * 0.7;
+        mat4Translate(pm, pm, -9.5 + swayX, 2.0 + hoverY, 3.0 + swayX * 0.5);
+
+        if (petType === 'cube') {
+          mat4RotateY(pm, pm, time * 0.0025);
+          mat4RotateX(pm, pm, Math.sin(time * 0.003) * 0.18);
+          drawPart(this.cosmeticMeshes.petCube, pm);
+
+          // Little satellite orbiter
+          const orb = mat4Copy(mat4Create(), pm);
+          mat4Translate(orb, orb, Math.cos(time * 0.006) * 3.4, Math.sin(time * 0.006) * 1.8, Math.sin(time * 0.006) * 3.4);
+          drawPart(this.cosmeticMeshes.petOrbiter, orb);
+        } else if (petType === 'ghost') {
+          mat4RotateY(pm, pm, Math.sin(time * 0.002) * 0.3);
+          mat4RotateZ(pm, pm, Math.sin(time * 0.003) * 0.1);
+          drawPart(this.cosmeticMeshes.ghostHead, pm);
+
+          const gb = mat4Copy(mat4Create(), pm);
+          mat4Translate(gb, gb, 0, -2.6, 0);
+          drawPart(this.cosmeticMeshes.ghostBody, gb);
+
+          const gt = mat4Copy(mat4Create(), pm);
+          mat4Translate(gt, gt, 0, -4.4, Math.sin(time * 0.005) * 0.4);
+          drawPart(this.cosmeticMeshes.ghostTail, gt);
+        }
+      }
+
+      gl.enable(gl.CULL_FACE);
+      gl.uniform1f(this.uniforms.useCustomColor, 0.0);
     }
   }
 

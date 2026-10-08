@@ -11,6 +11,7 @@ async function updateSkin() {
   if (!skinRenderer) {
     skinRenderer = new SkinRenderer(canvas);
   }
+  skinRenderer.setCosmetics(model.state?.settings?.cosmetics);
   const key = `${model.state?.settings?.activeSkinId || 'account'}:${model.state?.settings?.activeAccount || ''}`;
   if (currentSkinKey === key) return;
   currentSkinKey = key;

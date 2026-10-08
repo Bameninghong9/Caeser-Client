@@ -1,5 +1,5 @@
-import { $, api, model, update, onState, action, toast, currentAccount } from './common.js';
-import { renderSkinSnapshot } from './skin-renderer.js';
+import { $, api, model, update, onState, action, toast, currentAccount, getActiveSkinTexture } from './common.js';
+import { renderSkinSnapshot, SkinRenderer } from './skin-renderer.js';
 import { t } from './i18n.js';
 
 let renamingSkinId = null;
@@ -170,10 +170,186 @@ async function renderSkins() {
       skinTexture: s.data
     }));
   }
+
+  // Also update cosmetics preview if cosmetics view is active
+  updateCosmeticsStudio();
+}
+
+let cosmeticsRenderer = null;
+
+async function updateCosmeticsStudio() {
+  const canvas = $('cosmetics-preview-canvas');
+  if (!canvas) return;
+  if (!cosmeticsRenderer) {
+    cosmeticsRenderer = new SkinRenderer(canvas);
+  }
+
+  try {
+    const texture = await getActiveSkinTexture();
+    cosmeticsRenderer.setSkin(texture);
+  } catch {
+    cosmeticsRenderer.setSkin(null);
+  }
+
+  const cosmetics = model.state?.settings?.cosmetics || {
+    wings: { type: 'none', color: '#a855f7' },
+    head: { type: 'none', color: '#facc15' },
+    pet: { type: 'none', color: '#38bdf8' }
+  };
+
+  cosmeticsRenderer.setCosmetics(cosmetics);
+  syncCosmeticsUI(cosmetics);
+}
+
+function syncCosmeticsUI(cosmetics) {
+  // Wings
+  document.querySelectorAll('[data-category="wings"] .cosmetic-tile').forEach(tile => {
+    tile.classList.toggle('active', tile.dataset.type === (cosmetics.wings?.type || 'none'));
+  });
+
+  // Head
+  document.querySelectorAll('[data-category="head"] .cosmetic-tile').forEach(tile => {
+    tile.classList.toggle('active', tile.dataset.type === (cosmetics.head?.type || 'none'));
+  });
+
+  // Pet
+  document.querySelectorAll('[data-category="pet"] .cosmetic-tile').forEach(tile => {
+    tile.classList.toggle('active', tile.dataset.type === (cosmetics.pet?.type || 'none'));
+  });
+  const petType = cosmetics.pet?.type || 'none';
+  const customRow = $('pet-custom-row');
+  if (customRow) customRow.hidden = petType !== 'custom';
+
+  const playerInput = $('pet-custom-player-input');
+  if (playerInput && playerInput.value !== (cosmetics.pet?.customPlayer || '')) {
+    if (document.activeElement !== playerInput) {
+      playerInput.value = cosmetics.pet?.customPlayer || '';
+    }
+  }
+}
+
+async function saveCosmetics(patch) {
+  const current = model.state?.settings?.cosmetics || {
+    wings: { type: 'none' },
+    head: { type: 'none' },
+    pet: { type: 'none', customPlayer: '', customSkinUrl: '' }
+  };
+  const next = {
+    wings: { ...current.wings, ...patch.wings },
+    head: { ...current.head, ...patch.head },
+    pet: { ...current.pet, ...patch.pet }
+  };
+  action(async () => {
+    const saveFn = api.settings || api.updateSettings;
+    update(await saveFn({ cosmetics: next }));
+    if (cosmeticsRenderer) cosmeticsRenderer.setCosmetics(next);
+  });
+}
+
+async function applyCustomPet() {
+  const input = $('pet-custom-player-input');
+  const status = $('pet-custom-status');
+  const applyBtn = $('pet-custom-player-apply');
+  if (!input) return;
+  const username = input.value.trim();
+  if (!username) {
+    if (status) {
+      status.textContent = 'Bitte einen Spielernamen eingeben.';
+      status.className = 'pet-custom-status error';
+    }
+    return;
+  }
+  if (applyBtn) applyBtn.disabled = true;
+  if (status) {
+    status.textContent = `Lade Skin von "${username}" …`;
+    status.className = 'pet-custom-status loading';
+  }
+  try {
+    const res = await api.playerSkinGet(username);
+    if (res?.dataUrl) {
+      if (status) {
+        status.textContent = `✓ Skin von "${username}" geladen!`;
+        status.className = 'pet-custom-status success';
+      }
+      await saveCosmetics({
+        pet: {
+          type: 'custom',
+          customPlayer: username,
+          customSkinUrl: res.dataUrl
+        }
+      });
+      if (cosmeticsRenderer) {
+        cosmeticsRenderer.setPetSkin(res.dataUrl);
+      }
+      toast(`Skin von "${username}" als Begleiter ausgerüstet!`);
+    }
+  } catch (err) {
+    if (status) {
+      status.textContent = `Fehler: ${err.message || 'Skin konnte nicht geladen werden'}`;
+      status.className = 'pet-custom-status error';
+    }
+  } finally {
+    if (applyBtn) applyBtn.disabled = false;
+  }
 }
 
 export function initSkins() {
   onState(renderSkins);
+
+  // Subnav tabs (Skins vs 3D-Cosmetics)
+  document.querySelectorAll('.skins-nav-tab').forEach(tab => {
+    tab.onclick = () => {
+      const mode = tab.dataset.skinsTab;
+      document.querySelectorAll('.skins-nav-tab').forEach(t => t.classList.toggle('active', t === tab));
+      const libView = $('skins-view-library');
+      const cosView = $('skins-view-cosmetics');
+      const actions = $('skins-toolbar-actions');
+      if (libView) libView.hidden = mode !== 'library';
+      if (cosView) cosView.hidden = mode !== 'cosmetics';
+      if (actions) actions.hidden = mode !== 'library';
+      if (mode === 'cosmetics') {
+        updateCosmeticsStudio();
+      }
+    };
+  });
+
+  // Cosmetic Option Tiles
+  document.querySelectorAll('.cosmetic-tile').forEach(tile => {
+    tile.onclick = () => {
+      const category = tile.closest('[data-category]')?.dataset.category;
+      const type = tile.dataset.type;
+      if (!category) return;
+      if (category === 'pet' && type === 'custom') {
+        const customRow = $('pet-custom-row');
+        if (customRow) customRow.hidden = false;
+        const input = $('pet-custom-player-input');
+        if (input && !input.value.trim()) {
+          input.focus();
+        } else if (input && input.value.trim()) {
+          applyCustomPet();
+          return;
+        }
+        saveCosmetics({ pet: { type: 'custom' } });
+        return;
+      }
+      saveCosmetics({ [category]: { type } });
+    };
+  });
+
+  // Custom Player Apply & Keydown
+  const customPlayerInput = $('pet-custom-player-input');
+  const customPlayerApply = $('pet-custom-player-apply');
+  if (customPlayerApply) {
+    customPlayerApply.onclick = () => applyCustomPet();
+  }
+  if (customPlayerInput) {
+    customPlayerInput.onkeydown = e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        applyCustomPet();
+      }
+    };
+  }
 
   const addBtn = $('add-skin-button');
   const fileInput = $('skin-file-input');

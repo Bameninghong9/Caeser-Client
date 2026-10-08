@@ -39,6 +39,7 @@ class DiscordRpcClient {
             this.setupSocket();
             resolve(true);
           });
+          sock.unref();
           sock.once('error', () => {
             sock.destroy();
             resolve(false);
@@ -56,6 +57,7 @@ class DiscordRpcClient {
 
   setupSocket() {
     if (!this.socket) return;
+    this.socket.unref();
     this.socket.on('error', () => {
       this.cleanup();
     });
@@ -94,6 +96,11 @@ class DiscordRpcClient {
       try { this.socket.destroy(); } catch {}
       this.socket = null;
     }
+  }
+
+  destroy() {
+    this.setEnabled(false);
+    this.cleanup();
   }
 
   sendActivity(activity) {

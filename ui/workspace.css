@@ -156,6 +156,70 @@ footer{display:none!important}
 .skin-window-info{margin-top:10px;display:flex;flex-direction:column;gap:3px}
 .skin-window-name{font-size:13px;font-weight:700;color:#ffffff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
+/* Skins Page Subnav */
+.skins-nav-bar{display:flex;gap:10px;margin-bottom:20px;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:12px}
+.skins-nav-tab{display:inline-flex;align-items:center;gap:9px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:9px 18px;color:#a89fb3;font-size:12px;font-weight:600;cursor:pointer;transition:all .18s ease}
+.skins-nav-tab:hover{background:rgba(255,255,255,0.08);color:#ffffff;border-color:rgba(255,255,255,0.18)}
+.skins-nav-tab.active{background:color-mix(in srgb,var(--accent) 18%,#15101d);border-color:var(--accent);color:#ffffff;box-shadow:0 0 14px color-mix(in srgb,var(--accent) 25%,transparent)}
+.skins-nav-tab .nav-tab-icon{width:16px;height:16px}
+.skins-nav-tab .nav-tab-emoji{font-size:15px;line-height:1}
+
+/* Cosmetics Studio Layout */
+.cosmetics-studio-layout{display:grid;grid-template-columns:360px 1fr;gap:26px;align-items:start}
+@media (max-width: 900px){.cosmetics-studio-layout{grid-template-columns:1fr}}
+
+/* Cosmetics Preview Panel */
+.cosmetics-preview-panel{position:sticky;top:10px}
+.cosmetics-canvas-card{position:relative;background:#100d17;border:1px solid rgba(255,255,255,0.1);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 16px 16px;box-shadow:0 10px 30px rgba(0,0,0,0.5)}
+.cosmetics-preview-canvas{width:320px;height:400px;display:block;cursor:grab;touch-action:none}
+.cosmetics-preview-canvas:active{cursor:grabbing}
+.cosmetics-badge{position:absolute;top:12px;left:14px;display:inline-flex;align-items:center;gap:7px;background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.12);border-radius:20px;padding:4px 10px;font-size:10px;font-weight:700;letter-spacing:1px;color:#e4daf0;backdrop-filter:blur(6px);text-transform:uppercase}
+.cosmetics-badge .pulse-dot{width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 8px #10b981;animation:pulseDot 1.8s infinite}
+@keyframes pulseDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(0.85)}}
+.cosmetics-hint{margin-top:8px;font-size:11px;color:#7e7190;text-align:center}
+
+/* Cosmetics Controls Panel */
+.cosmetics-controls-panel{display:flex;flex-direction:column;gap:16px}
+.cosmetic-category-card{background:#120e1a;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:18px 20px;display:flex;flex-direction:column;gap:14px;transition:border-color .2s ease}
+.cosmetic-category-card:hover{border-color:rgba(255,255,255,0.16)}
+.cosmetic-card-header{display:flex;align-items:center;gap:12px}
+.cosmetic-icon-bubble{width:36px;height:36px;border-radius:10px;background:color-mix(in srgb,var(--accent) 15%,#1c1626);display:flex;align-items:center;justify-content:center;font-size:18px;border:1px solid color-mix(in srgb,var(--accent) 30%,transparent)}
+.cosmetic-card-header strong{font-size:14px;font-weight:700;color:#ffffff}
+.cosmetic-card-header p{font-size:11px;color:#9182a3;margin-top:2px}
+
+/* Option Tiles */
+.cosmetic-option-tiles{display:grid;grid-template-columns:repeat(auto-fit, minmax(95px, 1fr));gap:10px}
+.cosmetic-tile{background:#171221;border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px 10px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;color:#a89fb3;font-size:11px;font-weight:600;transition:all .18s ease;text-align:center}
+.cosmetic-tile .tile-icon{font-size:20px;line-height:1}
+.cosmetic-tile:hover{background:rgba(255,255,255,0.07);color:#ffffff;border-color:rgba(255,255,255,0.2);transform:translateY(-1px)}
+.cosmetic-tile.active{background:color-mix(in srgb,var(--accent) 22%,#1b1328);border-color:var(--accent);color:#ffffff;box-shadow:0 0 14px color-mix(in srgb,var(--accent) 30%,transparent)}
+
+/* Custom Player Input for Shoulder Pet */
+.pet-custom-row{display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06)}
+.pet-custom-row label{font-size:12px;color:#c9bfd5}
+.pet-custom-input-bar{display:flex;gap:8px;align-items:center}
+.pet-custom-input{flex:1;height:36px;background:#0d0914;border:1px solid rgba(255,255,255,0.12);border-radius:7px;color:#ffffff;font-size:12px;padding:0 12px;outline:none;transition:border-color .18s ease}
+.pet-custom-input:focus{border-color:var(--accent);box-shadow:0 0 10px color-mix(in srgb,var(--accent) 25%,transparent)}
+.pet-apply-btn{height:36px;padding:0 18px;font-size:12px;font-weight:600;border-radius:7px;background:var(--accent);color:#fff;border:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .18s ease}
+.pet-apply-btn:hover{filter:brightness(1.15);transform:translateY(-1px)}
+.pet-apply-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+.pet-custom-status{font-size:11px;min-height:16px;line-height:16px;margin-top:2px}
+.pet-custom-status.success{color:#10b981}
+.pet-custom-status.error{color:#ef4444}
+.pet-custom-status.loading{color:#38bdf8}
+
+/* Cosmetic Color Row */
+.cosmetic-color-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06)}
+.cosmetic-color-row strong{font-size:12px;color:#c9bfd5}
+.color-picker-group{display:flex;align-items:center;gap:10px}
+.color-picker-group input[type="color"]{-webkit-appearance:none;border:none;width:30px;height:30px;border-radius:6px;cursor:pointer;background:none;padding:0}
+.color-picker-group input[type="color"]::-webkit-color-swatch-wrapper{padding:0}
+.color-picker-group input[type="color"]::-webkit-color-swatch{border:1px solid rgba(255,255,255,0.2);border-radius:6px}
+.color-hex-input{width:75px;height:28px;background:#0d0914;border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#ffffff;font-size:11px;font-family:monospace;padding:0 8px;text-transform:uppercase}
+.color-quick-swatches{display:flex;align-items:center;gap:6px}
+.swatch-btn{width:20px;height:20px;border-radius:50%;background:var(--swatch);border:1px solid rgba(255,255,255,0.25);cursor:pointer;padding:0;transition:transform .15s ease,box-shadow .15s ease}
+.swatch-btn:hover{transform:scale(1.22);box-shadow:0 0 8px var(--swatch)}
+
 /* Wallpaper Settings UI */
 .wallpaper-settings-card{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap;margin-top:4px}
 .wallpaper-preview-box{width:230px;height:140px;border-radius:9px;border:1px solid rgba(255,255,255,0.12);background:#100d17;overflow:hidden;position:relative;flex-shrink:0;box-shadow:0 6px 20px rgba(0,0,0,0.45)}
