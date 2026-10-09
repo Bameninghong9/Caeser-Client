@@ -7,9 +7,8 @@ const { createLogWindowManager } = require('./log-window.cjs');
 const { register } = require('./ipc.cjs');
 const { openLoginWindow } = require('../auth/window.cjs');
 app.setName('Caeser Client');
-app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
-app.commandLine.appendSwitch('enable-gpu-rasterization');
-app.commandLine.appendSwitch('enable-zero-copy');
+// Ensure Chromium and Windows aggressively throttle background rendering when other apps/games are running
+app.commandLine.appendSwitch('disable-renderer-backgrounding', 'false');
 if (process.env.CAESER_TEST_DATA) app.setPath('userData', process.env.CAESER_TEST_DATA);
 let win;
 let logManager;

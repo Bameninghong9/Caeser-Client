@@ -203,12 +203,43 @@ async function prepare({ root, version, mode, instanceKey, javaPath, resources, 
   }
   const clientConfigDir = path.join(instance, 'config', 'CaeserClient');
   await fs.mkdir(clientConfigDir, { recursive: true });
-  const cosmeticsData = cosmetics || {
+  const cosmeticsPath = path.join(clientConfigDir, 'cosmetics.json');
+  let existingCosmetics = {};
+  try {
+    const raw = await fs.readFile(cosmeticsPath, 'utf8');
+    existingCosmetics = JSON.parse(raw);
+  } catch {}
+
+  const cosmeticsData = {
     wings: { type: 'none', color: '#a855f7' },
     head: { type: 'none', color: '#facc15' },
-    pet: { type: 'none', color: '#38bdf8' }
+    pet: { type: 'none', color: '#38bdf8' },
+    accessories: [],
+    accessoryCustomPlayers: {},
+    ...existingCosmetics,
+    ...(cosmetics || {})
   };
-  await fs.writeFile(path.join(clientConfigDir, 'cosmetics.json'), JSON.stringify(cosmeticsData, null, 2), 'utf8');
+
+  if (Array.isArray(existingCosmetics.accessories) && existingCosmetics.accessories.length > 0) {
+    cosmeticsData.accessories = existingCosmetics.accessories;
+  }
+  if (existingCosmetics.accessoryCustomPlayers && typeof existingCosmetics.accessoryCustomPlayers === 'object') {
+    cosmeticsData.accessoryCustomPlayers = {
+      ...existingCosmetics.accessoryCustomPlayers,
+      ...(cosmeticsData.accessoryCustomPlayers || {})
+    };
+  }
+  if (existingCosmetics.pet && (!cosmetics || cosmetics.pet?.type === 'none')) {
+    cosmeticsData.pet = existingCosmetics.pet;
+  }
+  if (existingCosmetics.wings && (!cosmetics || cosmetics.wings?.type === 'none')) {
+    cosmeticsData.wings = existingCosmetics.wings;
+  }
+  if (existingCosmetics.head && (!cosmetics || cosmetics.head?.type === 'none')) {
+    cosmeticsData.head = existingCosmetics.head;
+  }
+
+  await fs.writeFile(cosmeticsPath, JSON.stringify(cosmeticsData, null, 2), 'utf8');
   return { java, metadata, instance, natives, classpath, mainClass, extraArguments, assetRoot, virtualRoot, loggingArgument, libraryRoot };
 }
 function launchArguments(prepared, account, memory) {

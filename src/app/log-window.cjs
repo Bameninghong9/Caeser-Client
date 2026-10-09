@@ -38,7 +38,7 @@ function createLogWindowManager(controller) {
         sandbox: true,
         nodeIntegration: false,
         webSecurity: true,
-        backgroundThrottling: false,
+        backgroundThrottling: true,
         spellcheck: false
       }
     });

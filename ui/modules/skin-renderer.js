@@ -328,11 +328,12 @@ export class SkinRenderer {
         customSkinUrl: cosmetics.pet?.customSkinUrl || ''
       }
     };
-    if (this.cosmetics.pet.type === 'custom' && this.cosmetics.pet.customSkinUrl) {
+    const isChibiPet = ['self', 'custom', 'minime_sit', 'minime_head', 'minime_hand', 'minime_chain'].includes(this.cosmetics.pet.type);
+    if (isChibiPet && this.cosmetics.pet.customSkinUrl) {
       if (this.currentPetSkinUrl !== this.cosmetics.pet.customSkinUrl) {
         this.setPetSkin(this.cosmetics.pet.customSkinUrl);
       }
-    } else if (this.cosmetics.pet.type !== 'custom') {
+    } else if (!isChibiPet || !this.cosmetics.pet.customSkinUrl) {
       this.currentPetSkinUrl = null;
       this.petTexture = null;
     }
@@ -697,19 +698,85 @@ export class SkinRenderer {
     ctx.translate(this.canvas.width / 2 - 40, this.canvas.height / 2 - 80);
     ctx.drawImage(source, 8, 8, 8, 8, 0, 0, 80, 80);
     ctx.drawImage(source, 40, 8, 8, 8, -4, -4, 88, 88);
+    stage.addEventListener('pointerenter', () => {
+      this.resume();
+    });
     ctx.restore();
   }
 
   startLoop() {
+    this.paused = false;
+    this.lastFrameTime = 0;
+
     const renderFrame = time => {
-      this.animFrame = requestAnimationFrame(renderFrame);
+      this.animFrame = null;
+
+      // Skip render if document is hidden, canvas is detached or not displayed
+      if (document.hidden || this.paused || !this.canvas.isConnected || this.canvas.offsetParent === null) {
+        return;
+      }
+
+      // If window is not focused and user is not dragging, render single frame and sleep
+      if (!document.hasFocus() && !this.drag.active) {
+        this.render(time);
+        return;
+      }
+
+      // Cap at ~30 FPS to avoid burning GPU/CPU on monitor refresh rates of 144Hz/240Hz
+      if (time - this.lastFrameTime < 33) {
+        this.animFrame = requestAnimationFrame(renderFrame);
+        return;
+      }
+      this.lastFrameTime = time;
+
       if (document.body.classList.contains('no-animation')) {
         this.render(0);
         return;
       }
       this.render(time);
+      this.animFrame = requestAnimationFrame(renderFrame);
     };
-    this.animFrame = requestAnimationFrame(renderFrame);
+
+    this._renderFrame = renderFrame;
+
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        this.pause();
+      } else {
+        this.resume();
+      }
+    };
+    const onWindowBlur = () => {
+      this.pause();
+    };
+    const onWindowFocus = () => {
+      this.resume();
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('blur', onWindowBlur);
+    window.addEventListener('focus', onWindowFocus);
+
+    this._visibilityHandler = onVisibilityChange;
+    this._blurHandler = onWindowBlur;
+    this._focusHandler = onWindowFocus;
+
+    this.resume();
+  }
+
+  pause() {
+    this.paused = true;
+    if (this.animFrame) {
+      cancelAnimationFrame(this.animFrame);
+      this.animFrame = null;
+    }
+  }
+
+  resume() {
+    this.paused = false;
+    if (!this.animFrame && this._renderFrame) {
+      this.animFrame = requestAnimationFrame(this._renderFrame);
+    }
   }
 
   render(time = 0) {
@@ -1015,45 +1082,97 @@ export class SkinRenderer {
         drawPart(this.cosmeticMeshes.hornTip, rt, cHornTip);
       }
 
-      // 3. Pet / Shoulder Companion
+      // 3. Pet / Companion (MiniMe Sit, Head, Hand, Chain)
       const petType = this.cosmetics.pet?.type;
-      if (petType === 'self' || petType === 'custom') {
-        // Draw Chibi Mini-Player sitting on right shoulder
+      const isChibi = ['self', 'custom', 'minime_sit', 'minime_head', 'minime_hand', 'minime_chain'].includes(petType);
+      if (isChibi) {
         gl.uniform1f(this.uniforms.useCustomColor, 0.0);
-        if (petType === 'custom' && this.petTexture) {
+        if (this.petTexture) {
           gl.bindTexture(gl.TEXTURE_2D, this.petTexture);
         } else {
           gl.bindTexture(gl.TEXTURE_2D, this.texture);
         }
 
         const pm = mat4Copy(mat4Create(), rootMat);
-        const hoverBob = Math.sin(time * 0.0035) * 0.45;
-        // Positioned sitting gently on the player's right shoulder:
-        mat4Translate(pm, pm, -6.6, 2.2 + hoverBob, 0.4);
 
-        const petPoses = {
-          miniHead: {
-            rx: -0.05 + Math.sin(time * 0.0022) * 0.08,
-            ry: 0.35 + Math.sin(time * 0.0018) * 0.15,
-            rz: -0.08
-          },
-          miniHat: {
-            rx: -0.05 + Math.sin(time * 0.0022) * 0.08,
-            ry: 0.35 + Math.sin(time * 0.0018) * 0.15,
-            rz: -0.08
-          },
-          miniTorso: { rx: 0.06, ry: 0.05, rz: 0 },
-          miniJacket: { rx: 0.06, ry: 0.05, rz: 0 },
-          miniRightArm: { rx: -0.35, ry: 0.1, rz: -0.15 },
-          miniRightSleeve: { rx: -0.35, ry: 0.1, rz: -0.15 },
-          miniLeftArm: { rx: -0.35, ry: -0.1, rz: 0.15 },
-          miniLeftSleeve: { rx: -0.35, ry: -0.1, rz: 0.15 },
-          // Sitting pose: legs swung forward, gentle foot dangling
-          miniRightLeg: { rx: -1.22 + Math.sin(time * 0.004) * 0.12, ry: -0.05, rz: -0.05 },
-          miniRightPant: { rx: -1.22 + Math.sin(time * 0.004) * 0.12, ry: -0.05, rz: -0.05 },
-          miniLeftLeg: { rx: -1.22 - Math.sin(time * 0.004) * 0.12, ry: 0.05, rz: 0.05 },
-          miniLeftPant: { rx: -1.22 - Math.sin(time * 0.004) * 0.12, ry: 0.05, rz: 0.05 }
-        };
+        let petPoses;
+        if (petType === 'minime_head') {
+          // Perched on top center of the head
+          mat4Translate(pm, pm, 0.0, 10.2, 0.0);
+          petPoses = {
+            miniHead: { rx: -0.05 + Math.sin(time * 0.0022) * 0.05, ry: Math.sin(time * 0.0018) * 0.12, rz: 0.0 },
+            miniHat: { rx: -0.05 + Math.sin(time * 0.0022) * 0.05, ry: Math.sin(time * 0.0018) * 0.12, rz: 0.0 },
+            miniTorso: { rx: 0.05, ry: 0, rz: 0 },
+            miniJacket: { rx: 0.05, ry: 0, rz: 0 },
+            miniRightArm: { rx: -0.35, ry: 0.1, rz: -0.15 },
+            miniRightSleeve: { rx: -0.35, ry: 0.1, rz: -0.15 },
+            miniLeftArm: { rx: -0.35, ry: -0.1, rz: 0.15 },
+            miniLeftSleeve: { rx: -0.35, ry: -0.1, rz: 0.15 },
+            miniRightLeg: { rx: -1.22, ry: -0.05, rz: -0.05 },
+            miniRightPant: { rx: -1.22, ry: -0.05, rz: -0.05 },
+            miniLeftLeg: { rx: -1.22, ry: 0.05, rz: 0.05 },
+            miniLeftPant: { rx: -1.22, ry: 0.05, rz: 0.05 }
+          };
+        } else if (petType === 'minime_hand') {
+          // Dangling from player's left hand
+          mat4Translate(pm, pm, 6.2, -6.5, 0.2);
+          petPoses = {
+            miniHead: { rx: -0.35, ry: 0, rz: 0 },
+            miniHat: { rx: -0.35, ry: 0, rz: 0 },
+            miniTorso: { rx: 0.0, ry: 0, rz: 0 },
+            miniJacket: { rx: 0.0, ry: 0, rz: 0 },
+            miniRightArm: { rx: 2.85, ry: -0.1, rz: -0.15 },
+            miniRightSleeve: { rx: 2.85, ry: -0.1, rz: -0.15 },
+            miniLeftArm: { rx: 2.85, ry: 0.1, rz: 0.15 },
+            miniLeftSleeve: { rx: 2.85, ry: 0.1, rz: 0.15 },
+            miniRightLeg: { rx: 0.12, ry: 0.05, rz: 0.0 },
+            miniRightPant: { rx: 0.12, ry: 0.05, rz: 0.0 },
+            miniLeftLeg: { rx: -0.08, ry: -0.05, rz: 0.0 },
+            miniLeftPant: { rx: -0.08, ry: -0.05, rz: 0.0 }
+          };
+        } else if (petType === 'minime_chain') {
+          // Pendant hanging in center of chest
+          mat4Translate(pm, pm, 0.0, 0.8, 2.4);
+          petPoses = {
+            miniHead: { rx: -0.08, ry: 0, rz: 0 },
+            miniHat: { rx: -0.08, ry: 0, rz: 0 },
+            miniTorso: { rx: 0.0, ry: 0, rz: 0 },
+            miniJacket: { rx: 0.0, ry: 0, rz: 0 },
+            miniRightArm: { rx: 2.75, ry: -0.10, rz: -0.32 },
+            miniRightSleeve: { rx: 2.75, ry: -0.10, rz: -0.32 },
+            miniLeftArm: { rx: 2.75, ry: 0.10, rz: 0.32 },
+            miniLeftSleeve: { rx: 2.75, ry: 0.10, rz: 0.32 },
+            miniRightLeg: { rx: 0.05, ry: 0.05, rz: 0.0 },
+            miniRightPant: { rx: 0.05, ry: 0.05, rz: 0.0 },
+            miniLeftLeg: { rx: -0.05, ry: -0.05, rz: 0.0 },
+            miniLeftPant: { rx: -0.05, ry: -0.05, rz: 0.0 }
+          };
+        } else {
+          // minime_sit (or self / custom): Stable on right shoulder, no floating hover bob, shifted away from head!
+          mat4Translate(pm, pm, -7.2, 1.8, 0.0);
+          petPoses = {
+            miniHead: {
+              rx: -0.05 + Math.sin(time * 0.0022) * 0.08,
+              ry: 0.35 + Math.sin(time * 0.0018) * 0.15,
+              rz: -0.08
+            },
+            miniHat: {
+              rx: -0.05 + Math.sin(time * 0.0022) * 0.08,
+              ry: 0.35 + Math.sin(time * 0.0018) * 0.15,
+              rz: -0.08
+            },
+            miniTorso: { rx: 0.06, ry: 0.05, rz: 0 },
+            miniJacket: { rx: 0.06, ry: 0.05, rz: 0 },
+            miniRightArm: { rx: -0.35, ry: 0.1, rz: -0.15 },
+            miniRightSleeve: { rx: -0.35, ry: 0.1, rz: -0.15 },
+            miniLeftArm: { rx: -0.35, ry: -0.1, rz: 0.15 },
+            miniLeftSleeve: { rx: -0.35, ry: -0.1, rz: 0.15 },
+            miniRightLeg: { rx: -1.22, ry: -0.05, rz: -0.05 },
+            miniRightPant: { rx: -1.22, ry: -0.05, rz: -0.05 },
+            miniLeftLeg: { rx: -1.22, ry: 0.05, rz: 0.05 },
+            miniLeftPant: { rx: -1.22, ry: 0.05, rz: 0.05 }
+          };
+        }
 
         if (this.miniMeshes) {
           for (const mesh of this.miniMeshes) {
@@ -1109,7 +1228,19 @@ export class SkinRenderer {
   }
 
   destroy() {
-    if (this.animFrame) cancelAnimationFrame(this.animFrame);
+    this.pause();
+    if (this._visibilityHandler) {
+      document.removeEventListener('visibilitychange', this._visibilityHandler);
+      this._visibilityHandler = null;
+    }
+    if (this._blurHandler) {
+      window.removeEventListener('blur', this._blurHandler);
+      this._blurHandler = null;
+    }
+    if (this._focusHandler) {
+      window.removeEventListener('focus', this._focusHandler);
+      this._focusHandler = null;
+    }
   }
 }
 
