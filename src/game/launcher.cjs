@@ -81,7 +81,7 @@ async function manifest(root) {
     try { return { ...JSON.parse(await fs.readFile(file, 'utf8')), cached: true }; } catch { throw error; }
   }
 }
-async function prepare({ root, version, mode, instanceKey, javaPath, resources, report, cosmetics }) {
+async function prepare({ root, version, mode, instanceKey, javaPath, resources, report, cosmetics, name, profileName }) {
   const versions = await manifest(root);
   const entry = versions.versions.find(v => v.id === version);
   if (!entry) throw new Error('Diese Version steht nicht im offiziellen Minecraft-Verzeichnis.');
@@ -244,7 +244,20 @@ async function prepare({ root, version, mode, instanceKey, javaPath, resources, 
   }
 
   await fs.writeFile(cosmeticsPath, JSON.stringify(cosmeticsData, null, 2), 'utf8');
-  return { java, metadata, instance, natives, classpath, mainClass, extraArguments, assetRoot, virtualRoot, loggingArgument, libraryRoot };
+
+  const profileTitle = profileName || name || '';
+  const profileVersion = version || metadata.id || '';
+  const profileJsonPath = path.join(clientConfigDir, 'profile.json');
+  try {
+    await fs.writeFile(profileJsonPath, JSON.stringify({
+      name: profileTitle,
+      version: profileVersion
+    }, null, 2), 'utf8');
+  } catch (err) {
+    console.warn('Failed to write profile.json:', err);
+  }
+
+  return { java, metadata, instance, natives, classpath, mainClass, extraArguments, assetRoot, virtualRoot, loggingArgument, libraryRoot, profileName: profileTitle, profileVersion };
 }
 function launchArguments(prepared, account, memory) {
   const { metadata, natives, instance, classpath, assetRoot, virtualRoot, libraryRoot } = prepared;
@@ -253,13 +266,21 @@ function launchArguments(prepared, account, memory) {
     auth_session: `token:${account.accessToken}:${account.id}`, auth_xuid: account.xuid || '', clientid: account.clientId,
     version_name: metadata.id, version_type: metadata.type, game_directory: instance, assets_root: assetRoot,
     assets_index_name: metadata.assetIndex.id, game_assets: virtualRoot, user_type: 'msa', user_properties: '{}',
-    natives_directory: natives, launcher_name: 'Caeser Client', launcher_version: '0.3.18',
+    natives_directory: natives, launcher_name: 'Caeser Client', launcher_version: '0.3.23',
     classpath: classpath.join(path.delimiter), classpath_separator: path.delimiter, library_directory: libraryRoot,
     resolution_width: '1280', resolution_height: '720'
   };
   const jvm = metadata.arguments?.jvm || ['-Djava.library.path=${natives_directory}', '-cp', '${classpath}'];
   const game = metadata.arguments?.game || metadata.minecraftArguments?.split(/\s+/) || [];
+  const profileJvmArgs = [];
+  if (prepared.profileName) {
+    profileJvmArgs.push(`-Dcaeser.profile.name=${prepared.profileName}`);
+  }
+  if (prepared.profileVersion) {
+    profileJvmArgs.push(`-Dcaeser.profile.version=${prepared.profileVersion}`);
+  }
   return [`-Xmx${memory}M`, '-Xms512M', '-Dlog4j2.formatMsgNoLookups=true',
+    ...profileJvmArgs,
     ...argumentsFor(jvm, values), ...argumentsFor(prepared.extraArguments.jvm, values),
     ...(prepared.loggingArgument ? [prepared.loggingArgument] : []), prepared.mainClass,
     ...argumentsFor(game, values), ...argumentsFor(prepared.extraArguments.game, values)];

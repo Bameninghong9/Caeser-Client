@@ -17,6 +17,7 @@ const DEFAULT_COSMETICS = {
   head: { type: 'none', color: '#facc15' },
   pet: { type: 'none', color: '#38bdf8', customPlayer: '', customSkinUrl: '' }
 };
+const CAESER_DISCORD_ICON = 'https://raw.githubusercontent.com/Bameninghong9/Caeser-Client/main/resources/icon.png';
 
 class Controller {
   constructor({ directory, encryption, resources, appVersion, emit, openBrowser }) {
@@ -29,6 +30,7 @@ class Controller {
     this.secrets = {};
     this.logHistory = [];
     this.wallpaper = null;
+    this.screenshotThumbsCache = new Map();
     this.discordRpc = new DiscordRpcClient();
     this.mods = new Mods({root:this.root, profiles:this.profiles, getKey:()=>this.secrets.curseforgeKey || process.env.CAESER_CURSEFORGE_KEY || DEFAULT_CURSEFORGE_KEY,
       assertIdle:()=>{if(this.busy) throw new Error('Ein Startvorgang läuft bereits.');},report:data=>this.emit('mod-progress',data)});
@@ -47,8 +49,8 @@ class Controller {
         details: 'Im Hauptmenü',
         state: 'Bereit zum Spielen',
         assets: {
-          large_image: 'logo',
-          large_text: `Caeser Client v${this.appVersion || '0.3.13'}`
+          large_image: CAESER_DISCORD_ICON,
+          large_text: `Caeser Client v${this.appVersion || '0.3.23'}`
         }
       });
     } else {
@@ -229,13 +231,13 @@ class Controller {
             details: `Spielt ${profile.name}`,
             state: `${profile.version} (${profile.mode === 'caeser' ? 'Caeser Client' : profile.mode === 'fabric' ? 'Fabric' : 'Vanilla'})`,
             timestamps: { start: Math.floor(Date.now() / 1000) },
-            assets: { large_image: 'logo', large_text: `Caeser Client v${this.appVersion || '0.3.13'}` }
+            assets: { large_image: CAESER_DISCORD_ICON, large_text: `Caeser Client v${this.appVersion || '0.3.23'}` }
           });
         } else {
           this.discordRpc.setActivity({
             details: 'Im Hauptmenü',
             state: 'Bereit zum Spielen',
-            assets: { large_image: 'logo', large_text: `Caeser Client v${this.appVersion || '0.3.13'}` }
+            assets: { large_image: CAESER_DISCORD_ICON, large_text: `Caeser Client v${this.appVersion || '0.3.23'}` }
           });
         }
       }
@@ -372,8 +374,8 @@ class Controller {
             state: `${profile.version} (${profile.mode === 'caeser' ? 'Caeser Client' : profile.mode === 'fabric' ? 'Fabric' : 'Vanilla'})`,
             timestamps: { start: Math.floor(Date.now() / 1000) },
             assets: {
-              large_image: 'logo',
-              large_text: `Caeser Client v${this.appVersion || '0.3.13'}`
+              large_image: CAESER_DISCORD_ICON,
+              large_text: `Caeser Client v${this.appVersion || '0.3.23'}`
             }
           });
         }
@@ -433,7 +435,7 @@ class Controller {
           this.discordRpc.setActivity({
             details: 'Im Hauptmenü',
             state: 'Bereit zum Spielen',
-            assets: { large_image: 'logo', large_text: `Caeser Client v${this.appVersion || '0.3.13'}` }
+            assets: { large_image: CAESER_DISCORD_ICON, large_text: `Caeser Client v${this.appVersion || '0.3.23'}` }
           });
         }
 
@@ -485,6 +487,244 @@ class Controller {
   }
   async autoFixCrash(action) {
     return executeAutoFix(action, this);
+  }
+  async getScreenshots() {
+    const fs = require('node:fs/promises');
+    const { nativeImage } = require('electron');
+    const dirs = new Set();
+    dirs.add(path.join(this.root, 'screenshots'));
+    try {
+      const instancesRoot = path.join(this.root, 'instances');
+      const entries = await fs.readdir(instancesRoot, { withFileTypes: true });
+      for (const ent of entries) {
+        if (ent.isDirectory()) {
+          dirs.add(path.join(instancesRoot, ent.name, 'screenshots'));
+          try {
+            const subEntries = await fs.readdir(path.join(instancesRoot, ent.name), { withFileTypes: true });
+            for (const sub of subEntries) {
+              if (sub.isDirectory()) {
+                dirs.add(path.join(instancesRoot, ent.name, sub.name, 'screenshots'));
+              }
+            }
+          } catch {}
+        }
+      }
+    } catch {}
+
+    const appData = process.env.APPDATA || '';
+    if (appData) {
+      dirs.add(path.join(appData, '.minecraft', 'screenshots'));
+    }
+
+    const screenshots = [];
+    const seenPaths = new Set();
+
+    for (const dir of dirs) {
+      try {
+        const files = await fs.readdir(dir);
+        for (const file of files) {
+          if (!file.toLowerCase().endsWith('.png')) continue;
+          const fullPath = path.join(dir, file);
+          if (seenPaths.has(fullPath)) continue;
+          seenPaths.add(fullPath);
+
+          const stat = await fs.stat(fullPath);
+          const cacheKey = `${fullPath}:${stat.mtimeMs}:${stat.size}`;
+          let thumb = this.screenshotThumbsCache ? this.screenshotThumbsCache.get(cacheKey) : '';
+          if (!thumb) {
+            try {
+              const img = nativeImage.createFromPath(fullPath);
+              if (!img.isEmpty()) {
+                const size = img.getSize();
+                const scale = Math.min(1, 380 / Math.max(size.width, 1));
+                const thumbW = Math.max(1, Math.round(size.width * scale));
+                const thumbH = Math.max(1, Math.round(size.height * scale));
+                thumb = img.resize({ width: thumbW, height: thumbH, quality: 'good' }).toDataURL();
+                if (this.screenshotThumbsCache) {
+                  this.screenshotThumbsCache.set(cacheKey, thumb);
+                }
+              }
+            } catch {}
+          }
+
+          screenshots.push({
+            id: Buffer.from(fullPath).toString('base64url'),
+            name: file,
+            path: fullPath,
+            size: stat.size,
+            mtime: stat.mtimeMs,
+            thumb: thumb || ''
+          });
+        }
+      } catch {}
+    }
+
+    screenshots.sort((a, b) => b.mtime - a.mtime);
+    return screenshots;
+  }
+  async getScreenshotFull(filePath) {
+    const fs = require('node:fs/promises');
+    const buf = await fs.readFile(filePath);
+    return `data:image/png;base64,${buf.toString('base64')}`;
+  }
+  async copyScreenshot(filePath) {
+    const { clipboard, nativeImage } = require('electron');
+    try {
+      const img = nativeImage.createFromPath(filePath);
+      if (!img.isEmpty()) {
+        if (typeof clipboard.write === 'function') {
+          clipboard.write({ image: img });
+        } else if (typeof clipboard.writeImage === 'function') {
+          clipboard.writeImage(img);
+        }
+      }
+    } catch (e) {
+      console.warn('Native image clipboard write failed:', e);
+    }
+
+    if (process.platform === 'win32') {
+      this._clipboardQueue = (this._clipboardQueue || Promise.resolve())
+        .then(() => this.copyScreenshotToWindowsClipboard(filePath))
+        .catch(err => console.warn('Windows clipboard write failed:', err));
+      await this._clipboardQueue;
+    }
+    return { ok: true };
+  }
+
+  async copyScreenshotToWindowsClipboard(filePath) {
+    const { spawn } = require('node:child_process');
+    const fs = require('node:fs');
+    const helperExe = this.resources ? path.join(this.resources, 'caeser-clipboard.exe') : null;
+
+    if (helperExe && fs.existsSync(helperExe)) {
+      return new Promise((resolve) => {
+        const child = spawn(helperExe, [path.resolve(filePath)], { windowsHide: true, stdio: 'ignore' });
+        const timer = setTimeout(() => {
+          try { child.kill(); } catch {}
+          resolve(false);
+        }, 1500);
+        child.once('close', (code) => {
+          clearTimeout(timer);
+          resolve(code === 0);
+        });
+        child.once('error', () => {
+          clearTimeout(timer);
+          resolve(false);
+        });
+      });
+    }
+
+    const absPath = path.resolve(filePath).replace(/'/g, "''");
+    const script = [
+      'Add-Type -AssemblyName System.Windows.Forms;',
+      'Add-Type -AssemblyName System.Drawing;',
+      `$p = '${absPath}';`,
+      '$img = [System.Drawing.Image]::FromFile($p);',
+      '$data = New-Object System.Windows.Forms.DataObject;',
+      '$data.SetImage($img);',
+      '$files = New-Object System.Collections.Specialized.StringCollection;',
+      '$files.Add($p);',
+      '$data.SetFileDropList($files);',
+      '[System.Windows.Forms.Clipboard]::SetDataObject($data, $true, 10, 50);',
+      '$img.Dispose();'
+    ].join('\n');
+
+    const b64 = Buffer.from(script, 'utf16le').toString('base64');
+    return new Promise((resolve) => {
+      const child = spawn('powershell.exe', [
+        '-NoProfile',
+        '-NonInteractive',
+        '-WindowStyle', 'Hidden',
+        '-EncodedCommand', b64
+      ], { windowsHide: true, stdio: 'ignore' });
+      const timer = setTimeout(() => {
+        try { child.kill(); } catch {}
+        resolve(false);
+      }, 3000);
+      child.once('close', (code) => {
+        clearTimeout(timer);
+        resolve(code === 0);
+      });
+      child.once('error', () => {
+        clearTimeout(timer);
+        resolve(false);
+      });
+    });
+  }
+  async openScreenshot(filePath) {
+    const { shell } = require('electron');
+    const err = await shell.openPath(filePath);
+    if (err) throw new Error(err);
+    return { ok: true };
+  }
+  async deleteScreenshot(filePath) {
+    const fs = require('node:fs/promises');
+    try {
+      await fs.unlink(filePath);
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
+    if (this.screenshotThumbsCache) {
+      for (const key of this.screenshotThumbsCache.keys()) {
+        if (key.startsWith(filePath + ':')) {
+          this.screenshotThumbsCache.delete(key);
+        }
+      }
+    }
+    return { ok: true };
+  }
+  async deleteAllScreenshots() {
+    const fs = require('node:fs/promises');
+    const list = await this.getScreenshots();
+    let deleted = 0;
+    for (const item of list) {
+      try {
+        await fs.unlink(item.path);
+        deleted++;
+      } catch (err) {
+        if (err.code !== 'ENOENT') throw err;
+      }
+    }
+    if (this.screenshotThumbsCache) {
+      this.screenshotThumbsCache.clear();
+    }
+    return { ok: true, count: deleted };
+  }
+  async renameScreenshot(filePath, newName) {
+    const fs = require('node:fs/promises');
+    let clean = (newName || '').trim();
+    if (!clean) throw new Error('Ungültiger Name.');
+    if (!clean.toLowerCase().endsWith('.png')) clean += '.png';
+    clean = clean.replace(/[<>:"/\\|?*]/g, '_');
+    const dir = path.dirname(filePath);
+    const target = path.join(dir, clean);
+    if (target !== filePath) {
+      try {
+        await fs.access(target);
+        throw new Error('Eine Datei mit diesem Namen existiert bereits.');
+      } catch (err) {
+        if (err.code !== 'ENOENT') throw err;
+      }
+      await fs.rename(filePath, target);
+      if (this.screenshotThumbsCache) {
+        for (const [k, v] of Array.from(this.screenshotThumbsCache.entries())) {
+          if (k.startsWith(filePath + ':')) {
+            this.screenshotThumbsCache.delete(k);
+            const newK = k.replace(filePath + ':', target + ':');
+            this.screenshotThumbsCache.set(newK, v);
+          }
+        }
+      }
+    }
+    return { ok: true, path: target, name: clean };
+  }
+  async openScreenshotsFolder() {
+    const fs = require('node:fs/promises');
+    const { shell } = require('electron');
+    const dir = path.join(this.root, 'screenshots');
+    await fs.mkdir(dir, { recursive: true });
+    await shell.openPath(dir);
+    return { ok: true };
   }
   destroy() {
     this.discordRpc.destroy();

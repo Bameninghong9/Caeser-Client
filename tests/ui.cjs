@@ -16,7 +16,7 @@ const assert = require('node:assert/strict');
   };
   try {
     let page = await boot();
-    assert.equal(await page.locator('nav [data-page]').count(),3);
+    assert.equal(await page.locator('nav [data-page]').count(),4);
     await page.locator('[data-page="profiles"]').click(); await page.locator('#new-profile').click();
     await page.locator('#profile-name').fill('Survival mit Freunden');
     await page.locator('#profile-version').selectOption('1.21.11'); await page.locator('[data-loader="fabric"]').click();

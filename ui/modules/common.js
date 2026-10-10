@@ -17,9 +17,10 @@ export function navigate(page) {
   document.querySelectorAll('[data-page]').forEach(el => el.classList.toggle('active', el.dataset.page === (page === 'profile' ? 'profiles' : page)));
   updatePageLabel();
   document.querySelector('.content').scrollTop = 0;
+  document.dispatchEvent(new CustomEvent('page-navigate', { detail: page }));
 }
 export function updatePageLabel() {
-  const map = { play: t('navPlay'), profiles: t('navProfiles'), profile: t('profile', 'Profil'), skins: t('navSkins'), settings: t('navSettings') };
+  const map = { play: t('navPlay'), profiles: t('navProfiles'), profile: t('profile', 'Profil'), skins: t('navSkins'), gallery: t('navGallery', 'Galerie'), settings: t('navSettings') };
   $('page-label').textContent = map[currentPage] || currentPage;
 }
 document.addEventListener('language-change', () => {
@@ -71,4 +72,54 @@ export async function loadVersions() {
     $('connection-label').textContent = data.cached ? t('versionsSaved', 'Versionsliste gespeichert') : t('allUpdated', 'Alles aktuell');
   } catch { $('connection-label').textContent = t('noConnection', 'Keine Verbindung'); }
   document.dispatchEvent(new Event('catalogue-change'));
+}
+
+export function showConfirmDialog({
+  eyebrow = t('confirmation', 'BESTÄTIGUNG'),
+  title = t('areYouSure', 'Bist du sicher?'),
+  message = '',
+  confirmText = t('confirm', 'Bestätigen'),
+  cancelText = t('cancel', 'Abbrechen'),
+  isDanger = true
+} = {}) {
+  return new Promise((resolve) => {
+    const dialog = $('app-confirm-dialog');
+    if (!dialog) {
+      resolve(window.confirm(message || title));
+      return;
+    }
+    const eyebrowEl = $('app-confirm-eyebrow');
+    const titleEl = $('app-confirm-title');
+    const msgEl = $('app-confirm-message');
+    const okBtn = $('app-confirm-ok');
+    const cancelBtn = $('app-confirm-cancel');
+    const closeBtn = $('app-confirm-close');
+
+    if (eyebrowEl) eyebrowEl.textContent = eyebrow;
+    if (titleEl) titleEl.textContent = title;
+    if (msgEl) msgEl.textContent = message;
+    if (okBtn) {
+      okBtn.textContent = confirmText;
+      okBtn.className = isDanger ? 'danger' : 'primary';
+    }
+    if (cancelBtn) cancelBtn.textContent = cancelText;
+
+    let cleanup;
+    const onOk = () => { cleanup(); resolve(true); dialog.close(); };
+    const onCancel = () => { cleanup(); resolve(false); dialog.close(); };
+
+    cleanup = () => {
+      okBtn?.removeEventListener('click', onOk);
+      cancelBtn?.removeEventListener('click', onCancel);
+      closeBtn?.removeEventListener('click', onCancel);
+      dialog.removeEventListener('cancel', onCancel);
+    };
+
+    okBtn?.addEventListener('click', onOk);
+    cancelBtn?.addEventListener('click', onCancel);
+    closeBtn?.addEventListener('click', onCancel);
+    dialog.addEventListener('cancel', onCancel);
+
+    dialog.showModal();
+  });
 }

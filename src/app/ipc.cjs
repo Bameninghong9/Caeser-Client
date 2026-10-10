@@ -97,6 +97,14 @@ function register(controller, win, pageURL, logManager) {
   handle('wallpaper-get', () => controller.getWallpaper());
   handle('wallpaper-set', input => controller.setWallpaper(input));
   handle('wallpaper-remove', () => controller.removeWallpaper());
+  handle('screenshots-get', () => controller.getScreenshots());
+  handle('screenshot-get-full', path => controller.getScreenshotFull(path));
+  handle('screenshot-copy', path => controller.copyScreenshot(path));
+  handle('screenshot-open', path => controller.openScreenshot(path));
+  handle('screenshot-delete', path => controller.deleteScreenshot(path));
+  handle('screenshots-delete-all', () => controller.deleteAllScreenshots());
+  handle('screenshot-rename', input => controller.renameScreenshot(input.path, input.newName));
+  handle('screenshots-open-folder', () => controller.openScreenshotsFolder());
   handle('open', async target => {
     const links = { azure: 'https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade', approval: 'https://help.minecraft.net/hc/en-us/articles/16254801392141' };
     if (target === 'folder') { await fs.mkdir(controller.root, { recursive: true }); const error = await shell.openPath(controller.root); if (error) throw new Error(error); }
