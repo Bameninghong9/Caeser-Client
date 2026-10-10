@@ -98,65 +98,113 @@ export function initAtmosphereAnimation() {
     const startX = toRight ? randomRange(-50, width * 0.65) : randomRange(width * 0.35, width + 50);
     const startY = randomRange(-30, height * 0.35);
     const baseAngle = toRight ? randomRange(0.45, 0.75) : randomRange(Math.PI - 0.75, Math.PI - 0.45);
-    const speed = randomRange(13, 20);
+    // Sternenschnuppen sanfter & ein wenig langsamer
+    const speed = randomRange(6.8, 10.5);
 
     shootingStars.push({
       x: startX,
       y: startY,
-      length: randomRange(120, 220),
+      length: randomRange(110, 190),
       speed,
       vx: Math.cos(baseAngle) * speed,
       vy: Math.sin(baseAngle) * speed,
       angle: baseAngle,
       age: 0,
-      maxLife: Math.floor(randomRange(36, 58)),
+      maxLife: Math.floor(randomRange(60, 92)),
       headRadius: randomRange(1.6, 2.5),
       thickness: randomRange(1.4, 2.2)
     });
   }
 
   // --- 4. Rain State ---
-  const RAIN_COUNT = 160;
+  const RAIN_COUNT = 150;
   const raindrops = [];
   const ripples = [];
-  let lightningAlpha = 0;
-  let nextLightningTime = Date.now() + 9000;
+  const activeBolts = [];
+  let flashSequence = [];
+  let flashIndex = 0;
+  let nextLightningTime = Date.now() + 10000;
+
+  function createRaindrop(randomY = true) {
+    const layer = Math.random();
+    let speed, len, widthSize, alpha;
+    if (layer < 0.32) {
+      // 1. Sehr sanfter, schwebender Nieselregen (ruhig & langsam: 2.2 - 4.2)
+      speed = randomRange(2.2, 4.2);
+      len = speed * randomRange(2.0, 2.7);
+      widthSize = 0.85;
+      alpha = randomRange(0.20, 0.35);
+    } else if (layer < 0.68) {
+      // 2. Gemächlicher, ruhiger Regen (5.0 - 7.8)
+      speed = randomRange(5.0, 7.8);
+      len = speed * randomRange(1.8, 2.4);
+      widthSize = 1.1;
+      alpha = randomRange(0.35, 0.55);
+    } else if (layer < 0.88) {
+      // 3. Etwas flotterer Regen für spürbaren Kontrast (8.5 - 12.0)
+      speed = randomRange(8.5, 12.0);
+      len = speed * randomRange(1.8, 2.2);
+      widthSize = 1.35;
+      alpha = randomRange(0.55, 0.75);
+    } else {
+      // 4. Schnellste Stufe – weiterhin ruhig und nicht übertrieben (12.5 - 15.5)
+      speed = randomRange(12.5, 15.5);
+      len = speed * randomRange(1.8, 2.2);
+      widthSize = 1.6;
+      alpha = randomRange(0.70, 0.88);
+    }
+
+    return {
+      x: Math.random() * (width + 200) - 100,
+      y: randomY ? Math.random() * (height + 100) - 50 : -randomRange(15, 60),
+      speed,
+      len,
+      widthSize,
+      alpha,
+      groundY: height - randomRange(5, 55)
+    };
+  }
 
   function initRain() {
     raindrops.length = 0;
     for (let i = 0; i < RAIN_COUNT; i++) {
-      const layer = Math.random();
-      let speed, len, widthSize, alpha;
-      if (layer < 0.45) {
-        // Background layer: small, soft, slower
-        speed = randomRange(14, 18);
-        len = randomRange(14, 22);
-        widthSize = 0.9;
-        alpha = randomRange(0.18, 0.35);
-      } else if (layer < 0.8) {
-        // Midground layer
-        speed = randomRange(20, 26);
-        len = randomRange(26, 40);
-        widthSize = 1.3;
-        alpha = randomRange(0.4, 0.65);
-      } else {
-        // Foreground layer: fast, long, bright
-        speed = randomRange(28, 36);
-        len = randomRange(46, 68);
-        widthSize = 1.8;
-        alpha = randomRange(0.7, 0.95);
-      }
-
-      raindrops.push({
-        x: Math.random() * (width + 200) - 100,
-        y: Math.random() * (height + 100) - 50,
-        speed,
-        len,
-        widthSize,
-        alpha,
-        groundY: height - randomRange(5, 55)
-      });
+      raindrops.push(createRaindrop(true));
     }
+    activeBolts.length = 0;
+    flashSequence.length = 0;
+    flashIndex = 0;
+    nextLightningTime = Date.now() + randomRange(9000, 18000);
+  }
+
+  function triggerLightning() {
+    // Blitze kommen einzeln (keine Überlappung)
+    if (activeBolts.length > 0 || flashIndex < flashSequence.length) return;
+
+    const startX = randomRange(width * 0.2, width * 0.8);
+    const mainBranch = [{ x: startX, y: -5 }];
+    let curX = startX;
+    let curY = 0;
+    const targetY = randomRange(height * 0.55, height * 0.85);
+
+    // Ein einzelner, klarer gezackter Blitzpfad
+    while (curY < targetY) {
+      curY += randomRange(22, 42);
+      curX += randomRange(-18, 18);
+      mainBranch.push({ x: curX, y: curY });
+    }
+
+    const maxLife = 26;
+    activeBolts.push({
+      main: mainBranch,
+      life: maxLife,
+      maxLife
+    });
+
+    // Ein einzelnes klares Aufleuchten mit sanftem, spürbar längerem Nachleuchten
+    flashSequence = [
+      0.44, 0.42, 0.40, 0.36, 0.32, 0.28, 0.24, 0.20, 0.16, 0.12, 0.09, 0.06, 0.04, 0.02, 0.01
+    ];
+    flashIndex = 0;
   }
 
   function resize() {
@@ -357,14 +405,14 @@ export function initAtmosphereAnimation() {
       ctx.fill();
     }
 
-    // 2. Shooting Stars (Sternschnuppen)
+    // 2. Shooting Stars (Sternschnuppen) - sanft und elegant
     const now = Date.now();
     if (now >= nextShootingStarTime) {
       spawnShootingStar();
       if (Math.random() < 0.25) {
-        setTimeout(() => { if (isRunning && currentAtmo === 'space') spawnShootingStar(); }, randomRange(300, 700));
+        setTimeout(() => { if (isRunning && currentAtmo === 'space') spawnShootingStar(); }, randomRange(400, 900));
       }
-      nextShootingStarTime = now + randomRange(4000, 8500);
+      nextShootingStarTime = now + randomRange(4500, 9000);
     }
 
     for (let i = shootingStars.length - 1; i >= 0; i--) {
@@ -379,8 +427,8 @@ export function initAtmosphereAnimation() {
       }
 
       let alpha = 1;
-      if (m.age < 6) alpha = m.age / 6;
-      else if (m.age > m.maxLife - 15) alpha = (m.maxLife - m.age) / 15;
+      if (m.age < 8) alpha = m.age / 8;
+      else if (m.age > m.maxLife - 20) alpha = (m.maxLife - m.age) / 20;
       alpha = Math.max(0, Math.min(1, alpha));
 
       const tailX = m.x - Math.cos(m.angle) * m.length;
@@ -413,25 +461,70 @@ export function initAtmosphereAnimation() {
   }
 
   function drawRain() {
-    const windSlant = 2.4; // subtle diagonal wind from left to right
+    const windSlant = 0.85; // sehr sanfter, natürlicher Neigungswinkel
 
-    // 1. Ambient Sheet Lightning (rare, soft, cozy distant thunder glow)
+    // 1. Blitze einzeln (alle 12-22s, ohne Hektik)
     const now = Date.now();
-    if (lightningAlpha <= 0 && now >= nextLightningTime) {
-      lightningAlpha = randomRange(0.05, 0.09);
-      nextLightningTime = now + randomRange(14000, 26000);
-    }
-    if (lightningAlpha > 0) {
-      ctx.fillStyle = `rgba(195, 210, 255, ${lightningAlpha.toFixed(3)})`;
-      ctx.fillRect(0, 0, width, height);
-      lightningAlpha -= 0.0035;
-      if (lightningAlpha < 0) lightningAlpha = 0;
+    if (activeBolts.length === 0 && flashIndex >= flashSequence.length && now >= nextLightningTime) {
+      triggerLightning();
+      nextLightningTime = now + randomRange(12000, 22000);
     }
 
-    // 2. Raindrops
+    // Sky Flash (einzelner klarer Lichtschein)
+    if (flashIndex < flashSequence.length) {
+      const fAlpha = flashSequence[flashIndex++];
+      ctx.fillStyle = `rgba(215, 230, 255, ${fAlpha.toFixed(3)})`;
+      ctx.fillRect(0, 0, width, height);
+    }
+
+    // Einzelner Blitz am Himmel (bleibt spürbar länger sichtbar & verglimmt sanft)
+    for (let b = activeBolts.length - 1; b >= 0; b--) {
+      const bolt = activeBolts[b];
+      const maxL = bolt.maxLife || 26;
+      let boltAlpha = 1;
+      const holdFrames = 8;
+      if (bolt.life < maxL - holdFrames) {
+        boltAlpha = bolt.life / (maxL - holdFrames);
+      }
+      boltAlpha = Math.max(0, Math.min(1, boltAlpha));
+
+      if (boltAlpha > 0) {
+        ctx.save();
+        ctx.lineJoin = 'miter';
+        ctx.lineCap = 'round';
+
+        // Äußeres elektrisches Leuchten (Cyan / Blau)
+        ctx.strokeStyle = `rgba(160, 215, 255, ${(boltAlpha * 0.75).toFixed(3)})`;
+        ctx.lineWidth = 4.2;
+        ctx.shadowColor = '#80c8ff';
+        ctx.shadowBlur = 14;
+
+        ctx.beginPath();
+        for (let i = 0; i < bolt.main.length; i++) {
+          if (i === 0) ctx.moveTo(bolt.main[i].x, bolt.main[i].y);
+          else ctx.lineTo(bolt.main[i].x, bolt.main[i].y);
+        }
+        ctx.stroke();
+
+        // Intensiver weißer Blitzkern
+        ctx.strokeStyle = `rgba(255, 255, 255, ${boltAlpha.toFixed(3)})`;
+        ctx.lineWidth = 1.9;
+        ctx.shadowBlur = 0;
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      bolt.life--;
+      if (bolt.life <= 0) {
+        activeBolts.splice(b, 1);
+      }
+    }
+
+    // 2. Raindrops mit unterschiedlichen ruhigen Geschwindigkeiten (eher langsam)
     for (let i = 0; i < raindrops.length; i++) {
       const drop = raindrops[i];
-      drop.x += windSlant * (drop.speed / 20);
+      drop.x += windSlant * (drop.speed / 6);
       drop.y += drop.speed;
 
       // Check ground splash impact
@@ -441,13 +534,12 @@ export function initAtmosphereAnimation() {
             x: drop.x,
             y: drop.groundY,
             r: 1,
-            maxR: randomRange(6, 14),
+            maxR: randomRange(5, 11),
             alpha: drop.alpha * 0.65
           });
         }
-        drop.y = -randomRange(20, 80);
-        drop.x = Math.random() * (width + 200) - 100;
-        drop.groundY = height - randomRange(5, 55);
+        // Tropfen neu erzeugen mit variierender Geschwindigkeitsstufe
+        Object.assign(drop, createRaindrop(false));
       }
 
       if (drop.x > width + 100) drop.x = -50;
