@@ -1,6 +1,6 @@
 const net = require('node:net');
 
-const DEFAULT_CLIENT_ID = '356875570916753438';
+const DEFAULT_CLIENT_ID = '1558499625999007914';
 
 class DiscordRpcClient {
   constructor(clientId = DEFAULT_CLIENT_ID) {
@@ -9,6 +9,7 @@ class DiscordRpcClient {
     this.connected = false;
     this.connecting = false;
     this.currentActivity = null;
+    this.currentPid = null;
     this.reconnectTimer = null;
     this.enabled = true;
   }
@@ -73,7 +74,7 @@ class DiscordRpcClient {
         if (opcode === 1 && payload.evt === 'READY') {
           this.connected = true;
           if (this.currentActivity) {
-            this.sendActivity(this.currentActivity);
+            this.sendActivity(this.currentActivity, this.currentPid);
           }
         }
       } catch {
@@ -103,13 +104,13 @@ class DiscordRpcClient {
     this.cleanup();
   }
 
-  sendActivity(activity) {
+  sendActivity(activity, pid) {
     if (!this.socket || !this.connected) return;
     try {
       const frame = {
         cmd: 'SET_ACTIVITY',
         args: {
-          pid: process.pid,
+          pid: pid || this.currentPid || process.pid,
           activity
         },
         nonce: Math.random().toString(36).slice(2)
@@ -120,14 +121,15 @@ class DiscordRpcClient {
     }
   }
 
-  setActivity(activity) {
+  setActivity(activity, pid) {
     this.currentActivity = activity;
+    this.currentPid = pid || process.pid;
     if (!this.enabled) return;
     if (!this.connected) {
       this.connect();
       return;
     }
-    this.sendActivity(activity);
+    this.sendActivity(activity, this.currentPid);
   }
 
   clearActivity() {

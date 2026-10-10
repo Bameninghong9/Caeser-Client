@@ -17,7 +17,7 @@ const DEFAULT_COSMETICS = {
   head: { type: 'none', color: '#facc15' },
   pet: { type: 'none', color: '#38bdf8', customPlayer: '', customSkinUrl: '' }
 };
-const CAESER_DISCORD_ICON = 'https://raw.githubusercontent.com/Bameninghong9/Caeser-Client/main/resources/icon.png';
+const CAESER_DISCORD_ICON = 'https://cdn.discordapp.com/app-icons/1558499625999007914/8a6c22196782afd29a05440238daf206.png';
 
 class Controller {
   constructor({ directory, encryption, resources, appVersion, emit, openBrowser }) {
@@ -377,7 +377,7 @@ class Controller {
               large_image: CAESER_DISCORD_ICON,
               large_text: `Caeser Client v${this.appVersion || '0.3.23'}`
             }
-          });
+          }, child.pid);
         }
         this.emit('game-spawn', {
           instanceId,
