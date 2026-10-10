@@ -25,16 +25,18 @@ class Controller {
     this.maxMemoryMb = Math.max(1024, Math.min(65536, Math.floor(os.totalmem() / 1073741824 - 2) * 1024));
 
     this.profiles = new Profiles(this.store, this.maxMemoryMb);
-    this.accounts = []; this.busy = false; this.game = null; this.loginController = null;
+    this.accounts = []; this.busy = false; this.game = null; this.games = new Set(); this.instances = new Map(); this.loginController = null;
     this.secrets = {};
     this.logHistory = [];
     this.wallpaper = null;
     this.discordRpc = new DiscordRpcClient();
     this.mods = new Mods({root:this.root, profiles:this.profiles, getKey:()=>this.secrets.curseforgeKey || process.env.CAESER_CURSEFORGE_KEY || DEFAULT_CURSEFORGE_KEY,
-      assertIdle:()=>{if(this.busy || this.game) throw new Error('Bitte zuerst Minecraft beenden.');},report:data=>this.emit('mod-progress',data)});
+      assertIdle:()=>{if(this.busy) throw new Error('Ein Startvorgang läuft bereits.');},report:data=>this.emit('mod-progress',data)});
   }
   async load() {
-    this.settings = { theme: 'Ultraviolet', customAccent: '', atmosphere: 'obsidian', glow: 'subtle', clientId: '', javaPath: '', activeAccount: '', activeSkinId: 'account', hiddenSkins: [], skinNames: {}, language: 'de', animations: true, autoOpenLog: true, discordRpc: true, customWallpaper: null, cosmetics: DEFAULT_COSMETICS, ...await this.store.read('settings.json', {}) };
+    this.settings = { theme: 'Ultraviolet', customAccent: '', atmosphere: 'nebula', glow: 'subtle', clientId: '', javaPath: '', activeAccount: '', activeSkinId: 'account', hiddenSkins: [], skinNames: {}, language: 'de', animations: true, autoOpenLog: true, discordRpc: true, customWallpaper: null, cosmetics: DEFAULT_COSMETICS, ...await this.store.read('settings.json', {}) };
+    if (this.settings.atmosphere === 'obsidian') this.settings.atmosphere = 'nebula';
+    if (this.settings.atmosphere === 'aurora') this.settings.atmosphere = 'rain';
     if (!this.settings.cosmetics) this.settings.cosmetics = DEFAULT_COSMETICS;
     this.skins = await this.store.read('skins.json', []);
     try { this.wallpaper = await this.store.read('wallpaper.json', null); } catch { this.wallpaper = null; }
@@ -200,8 +202,11 @@ class Controller {
       next.customAccent = patch.customAccent;
     }
     if ('atmosphere' in patch) {
-      if (!['obsidian','grid','space','aurora'].includes(patch.atmosphere)) throw new Error('Ungültiger Hintergrund-Stil.');
-      next.atmosphere = patch.atmosphere;
+      let atmo = patch.atmosphere;
+      if (atmo === 'obsidian') atmo = 'nebula';
+      if (atmo === 'aurora') atmo = 'rain';
+      if (!['nebula', 'grid', 'space', 'rain'].includes(atmo)) throw new Error('Ungültiger Hintergrund-Stil.');
+      next.atmosphere = atmo;
     }
     if ('glow' in patch) {
       if (!['off','subtle','neon'].includes(patch.glow)) throw new Error('Ungültige Glow-Einstellung.');
@@ -308,7 +313,7 @@ class Controller {
   async updateAccount(account) { this.accounts = this.accounts.map(a => a.id === account.id ? account : a); await this.saveAccounts(); }
   async launch() {
     if (this.mods.busy) throw new Error('Bitte warte, bis die Mods installiert wurden.');
-    if (this.busy || this.game) throw new Error('Minecraft wird bereits gestartet oder läuft noch.');
+    if (this.busy) throw new Error('Minecraft wird gerade gestartet. Bitte einen Moment warten.');
     const profile = this.profiles.selected(); if (!profile) throw new Error('Bitte zuerst ein Profil erstellen.');
     let account = this.accounts.find(a => a.id === this.settings.activeAccount);
     if (!account) throw new Error('Bitte zuerst mit einem Microsoft-Konto anmelden.');
@@ -319,15 +324,38 @@ class Controller {
       account = await auth.refresh(account); await this.updateAccount(account);
       const prepared = await launcher.prepare({ root: this.root, ...options, resources: this.resources, report });
       account = await auth.refresh(account); await this.updateAccount(account);
-      const child = launcher.start(prepared, account, options.memoryMb); this.game = child;
+      const child = launcher.start(prepared, account, options.memoryMb);
+      this.games.add(child);
+      this.game = child;
+      const instanceId = 'inst_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      child.instanceId = instanceId;
+      const instanceData = {
+        id: instanceId,
+        profileId: profile.id,
+        profileName: profile.name,
+        profileIcon: profile.icon || null,
+        profileVersion: profile.version,
+        profileMode: profile.mode,
+        accountName: account?.name || 'Player',
+        startTime: Date.now(),
+        endTime: null,
+        status: 'running',
+        exitCode: null,
+        process: child,
+        logs: []
+      };
+      this.instances.set(instanceId, instanceData);
+
       let session, timer;
       let buffer = '';
       const redact = text => String(text).replaceAll(account.accessToken, '[TOKEN]').replaceAll(account.refreshToken, '[TOKEN]');
       const parser = createLogParser(parsedLine => {
         const item = redact(parsedLine).slice(0, 2000);
+        instanceData.logs.push(item);
+        if (instanceData.logs.length > 3000) instanceData.logs.shift();
         this.logHistory.push(item);
         if (this.logHistory.length > 2500) this.logHistory.shift();
-        this.emit('game-log', item);
+        this.emit('game-log', { instanceId, line: item, profileName: profile.name });
       });
       const output = data => {
         buffer += data.toString(); const lines = buffer.split(/\r?\n/); buffer = lines.pop();
@@ -349,7 +377,22 @@ class Controller {
             }
           });
         }
-        this.emit('game-spawn', { profileName: profile.name, autoOpenLog: this.settings.autoOpenLog !== false });
+        this.emit('game-spawn', {
+          instanceId,
+          instance: {
+            id: instanceId,
+            profileId: profile.id,
+            profileName: profile.name,
+            profileIcon: profile.icon || null,
+            profileVersion: profile.version,
+            profileMode: profile.mode,
+            accountName: account?.name || 'Player',
+            startTime: instanceData.startTime,
+            status: 'running'
+          },
+          profileName: profile.name,
+          autoOpenLog: this.settings.autoOpenLog !== false
+        });
         session = new Session(this.profiles,profile.id); session.flush().catch(()=>this.emit('notice','Spielstatistik konnte nicht gespeichert werden.'));
         timer=setInterval(()=>session.flush().catch(()=>{}),15000); timer.unref();
       });
@@ -360,15 +403,23 @@ class Controller {
           buffer = '';
         }
         parser.flush();
-        this.game = null;
+        this.games.delete(child);
+        if (this.games.size === 0) {
+          this.game = null;
+        }
+        const wasManualStop = Boolean(child.wasKilledByUser || instanceData.stoppedByUser);
+        instanceData.status = (code === 0 || wasManualStop ? 'stopped' : 'crashed');
+        instanceData.exitCode = wasManualStop ? 0 : code;
+        instanceData.endTime = Date.now();
+
         if (session) await session.flush().catch(()=>this.emit('notice','Spielstatistik konnte nicht gespeichert werden.'));
 
         let diagnosis = null;
-        if (code !== 0) {
+        if (!wasManualStop && code !== 0 && code !== null) {
           try {
             diagnosis = await diagnoseCrash({
               code,
-              logLines: this.logHistory,
+              logLines: instanceData.logs.length ? instanceData.logs : this.logHistory,
               profile,
               instanceDir: prepared.instance,
               maxMemoryMb: this.maxMemoryMb
@@ -378,7 +429,7 @@ class Controller {
           }
         }
 
-        if (this.settings.discordRpc !== false) {
+        if (this.games.size === 0 && this.settings.discordRpc !== false) {
           this.discordRpc.setActivity({
             details: 'Im Hauptmenü',
             state: 'Bereit zum Spielen',
@@ -386,13 +437,51 @@ class Controller {
           });
         }
 
-        this.emit('game-exit', { code, diagnosis });
+        this.emit('game-exit', {
+          instanceId,
+          code: wasManualStop ? 0 : code,
+          diagnosis: wasManualStop ? null : diagnosis,
+          wasManualStop,
+          runningCount: this.games.size
+        });
       });
       await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
-      if (this.game) report({ stage: 'Minecraft läuft', percent: 100 });
-      return { running: !!this.game };
-    } catch (error) { this.game = null; report({ stage: 'Start fehlgeschlagen', percent: 0 }); throw error; }
+      report({ stage: 'Minecraft läuft', percent: 100 });
+      return { running: true, count: this.games.size, instanceId };
+    } catch (error) {
+      if (this.games.size === 0) this.game = null;
+      report({ stage: 'Start fehlgeschlagen', percent: 0 });
+      throw error;
+    }
     finally { this.busy = false; }
+  }
+  stopGame(instanceId) {
+    if (!instanceId) {
+      for (const [id, inst] of this.instances.entries()) {
+        if (inst.status === 'running' && inst.process) {
+          this.stopGame(id);
+        }
+      }
+      return true;
+    }
+    const inst = this.instances.get(instanceId);
+    if (inst && inst.process && !inst.process.killed) {
+      try {
+        inst.stoppedByUser = true;
+        if (inst.process) inst.process.wasKilledByUser = true;
+        inst.process.kill('SIGTERM');
+        setTimeout(() => {
+          if (!inst.process.killed) {
+            try { inst.process.kill('SIGKILL'); } catch {}
+          }
+        }, 3000);
+        return true;
+      } catch (e) {
+        console.error('Fehler beim Stoppen der Instanz:', e);
+        return false;
+      }
+    }
+    return false;
   }
   async autoFixCrash(action) {
     return executeAutoFix(action, this);

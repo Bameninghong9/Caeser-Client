@@ -70,8 +70,10 @@ const assert=require('node:assert/strict');
   await page.locator('[data-atmo="grid"]').click();
   await page.waitForFunction(()=>document.body.classList.contains('atmo-grid'));
   await page.waitForFunction(()=>document.getElementById('atmosphere-layer').classList.contains('atmo-grid'));
-  await page.locator('[data-atmo="aurora"]').click();
-  await page.waitForFunction(()=>document.getElementById('atmosphere-layer').classList.contains('atmo-aurora'));
+  await page.locator('[data-atmo="rain"]').click();
+  await page.waitForFunction(()=>document.getElementById('atmosphere-layer').classList.contains('atmo-rain'));
+  await page.locator('[data-atmo="nebula"]').click();
+  await page.waitForFunction(()=>document.getElementById('atmosphere-layer').classList.contains('atmo-nebula'));
 
   // Test custom wallpaper upload and removal
   await page.evaluate(async () => {

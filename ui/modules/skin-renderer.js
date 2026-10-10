@@ -659,6 +659,11 @@ export class SkinRenderer {
       this.mouse.targetY = 0;
     });
 
+    if (this.canvas.id === 'player-skin-canvas' || this.options.draggable === false) {
+      // Home screen skin is locked and cannot be dragged or pushed around
+      return;
+    }
+
     this.canvas.addEventListener('pointerdown', e => {
       this.drag.active = true;
       this.drag.lastX = e.clientX;
@@ -937,8 +942,8 @@ export class SkinRenderer {
         gl.drawElements(gl.TRIANGLES, mesh.count, gl.UNSIGNED_SHORT, 0);
       };
 
-      // 1. Wings (Flügel)
-      const wingType = this.cosmetics.wings?.type;
+      // 1. Wings (Flügel) - Removed as requested
+      const wingType = 'none';
       if ((wingType === 'angel' || wingType === 'dragon') && torsoMat) {
         const flap = Math.sin(time * 0.0048);
 

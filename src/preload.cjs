@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld('caeser', {
   profileDetails: id=>invoke('profile-details',id), searchMods: input=>invoke('mod-search',input),
   installMod: input=>invoke('mod-install',input), toggleMod: input=>invoke('mod-toggle',input),
   removeMod: input=>invoke('mod-remove',input), checkModUpdates: id=>invoke('mod-check-updates',id),
-  updateMod: input=>invoke('mod-update',input),
+  updateMod: input=>invoke('mod-update',input), updateAllMods: id=>invoke('mod-update-all',id),
   installCaeserMod: id=>invoke('caeser-mod-install',id),
   setCurseForgeKey: key=>invoke('curseforge-key',key), accountAvatar: id=>invoke('account-avatar',id),
   getSkins: () => invoke('skins-get'), addSkin: input => invoke('skin-add', input),

@@ -1,6 +1,7 @@
 import { $, api, model, update, onState, action, toast, navigate, loaderName, relativeTime, bytesLabel } from './common.js';
 import { openProfile } from './profiles.js';
 import { modIcon } from './images.js';
+import { t, currentLanguage } from './i18n.js';
 
 let source = 'modrinth', hits = [], total = 0, generation = 0, detailRequest = 0, installing = false, timer;
 let activeContentType = 'mods';
@@ -21,12 +22,15 @@ function updateBadgeCounts() {
 
 function header() {
   const p = profile(); if (!p) return;
+  const isEn = currentLanguage === 'en';
   $('detail-name').textContent = p.name; $('detail-image').src = `assets/loaders/${p.mode}.svg`;
   $('detail-version').textContent = p.version; $('detail-loader').textContent = loaderName(p.mode);
   $('detail-memory').textContent = `${p.memoryMb} MB RAM`;
   $('stat-last').textContent = relativeTime(p.lastPlayedAt);
   const minutes = Math.floor((p.playtimeMs || 0) / 60000);
-  $('stat-time').textContent = minutes >= 60 ? `${Math.floor(minutes / 60)} Std. ${minutes % 60} Min.` : `${minutes} Min.`;
+  $('stat-time').textContent = minutes >= 60
+    ? (isEn ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${Math.floor(minutes / 60)} Std. ${minutes % 60} Min.`)
+    : (isEn ? `${minutes} min` : `${minutes} Min.`);
 
   updateBadgeCounts();
 
@@ -37,11 +41,11 @@ function header() {
   const caeserBtn = $('install-caeser-mod');
 
   if (activeContentType === 'mods') {
-    titleEl.innerHTML = `Installierte Mods <span id="installed-count">${model.details?.mods?.length || 0}</span>`;
-    searchInput.placeholder = 'Mods im Profil suchen …';
-    if (addLabel) addLabel.textContent = 'Mods hinzufügen';
+    titleEl.innerHTML = `${t('installedMods')} <span id="installed-count">${model.details?.mods?.length || 0}</span>`;
+    searchInput.placeholder = t('searchModsPlaceholder');
+    if (addLabel) addLabel.textContent = t('addMods');
     addBtn.disabled = p.mode === 'vanilla';
-    addBtn.title = p.mode === 'vanilla' ? 'Mods benötigen ein Fabric-Profil.' : '';
+    addBtn.title = p.mode === 'vanilla' ? t('vanillaNoModsTitle') : '';
 
     if (caeserBtn) {
       const isEligible = p.version === '1.21.11' && p.mode !== 'vanilla';
@@ -49,25 +53,25 @@ function header() {
       if (isEligible) {
         const hasCaeser = model.details?.mods?.some(m => m.filename.includes('caeserclient') || m.name.toLowerCase().includes('caeser'));
         if (hasCaeser) {
-          caeserBtn.textContent = 'Caeser Mod installiert ✓';
+          caeserBtn.textContent = t('caeserModInstalled');
           caeserBtn.disabled = true;
         } else {
-          caeserBtn.textContent = 'Caeser Client Mod installieren';
+          caeserBtn.textContent = t('installCaeserMod');
           caeserBtn.disabled = false;
         }
       }
     }
   } else if (activeContentType === 'resourcepacks') {
-    titleEl.innerHTML = `Installierte Ressourcenpakete <span id="installed-count">${model.details?.resourcepacks?.length || 0}</span>`;
-    searchInput.placeholder = 'Ressourcenpakete durchsuchen …';
-    if (addLabel) addLabel.textContent = 'Ressourcenpakete hinzufügen';
+    titleEl.innerHTML = `${t('installedResourcePacks')} <span id="installed-count">${model.details?.resourcepacks?.length || 0}</span>`;
+    searchInput.placeholder = t('searchResourcePacksPlaceholder');
+    if (addLabel) addLabel.textContent = t('addResourcePacks');
     addBtn.disabled = false;
     addBtn.title = '';
     if (caeserBtn) caeserBtn.hidden = true;
   } else if (activeContentType === 'shaders') {
-    titleEl.innerHTML = `Installierte Shader-Pakete <span id="installed-count">${model.details?.shaders?.length || 0}</span>`;
-    searchInput.placeholder = 'Shader-Pakete durchsuchen …';
-    if (addLabel) addLabel.textContent = 'Shader-Pakete hinzufügen';
+    titleEl.innerHTML = `${t('installedShaders')} <span id="installed-count">${model.details?.shaders?.length || 0}</span>`;
+    searchInput.placeholder = t('searchShadersPlaceholder');
+    if (addLabel) addLabel.textContent = t('addShaders');
     addBtn.disabled = false;
     addBtn.title = '';
     if (caeserBtn) caeserBtn.hidden = true;
@@ -93,7 +97,10 @@ function renderInstalled() {
     } else {
       img.src = activeContentType === 'resourcepacks' ? 'assets/loaders/vanilla.svg' : 'assets/loaders/fabric.svg';
     }
-    const body = element('div'); const name = element('strong', '', item.name); name.title = item.filename;
+    const body = element('div', 'mod-info'); const name = element('strong', '', item.name); name.title = item.filename;
+    if (item.hasUpdate && activeContentType === 'mods') {
+      name.append(element('span', 'mod-update-badge', `Update: ${item.latestVersion}`));
+    }
     body.append(name, element('p', '', `${item.version || item.filename} · ${bytesLabel(item.size)}`));
     row.append(img, body);
 
@@ -101,8 +108,8 @@ function renderInstalled() {
     else {
       const actions = element('div', 'installed-mod-actions');
       if (item.hasUpdate && activeContentType === 'mods') {
-        const updateBtn = element('button', 'update-mod-btn', 'Aktualisieren');
-        updateBtn.title = `Auf Version ${item.latestVersion} aktualisieren`;
+        const updateBtn = element('button', 'update-mod-btn', t('update'));
+        updateBtn.title = `${t('updateTo')} ${item.latestVersion}`;
         updateBtn.onclick = async () => {
           updateBtn.disabled = true; updateBtn.textContent = '…';
           try {
@@ -112,17 +119,16 @@ function renderInstalled() {
               renderInstalled();
               checkUpdatesForProfile(data.profile.id);
             }
-            toast(`${item.name} auf Version ${item.latestVersion} aktualisiert!`);
+            toast(`${item.name} ${t('modUpdatedTo')} ${item.latestVersion}!`);
           } catch (err) {
             toast(err.message, true);
             updateBtn.disabled = false;
-            updateBtn.textContent = 'Aktualisieren';
+            updateBtn.textContent = t('update');
           }
         };
         actions.append(updateBtn);
       }
       const label = element('label', 'mod-switch');
-      label.title = item.enabled ? `${item.name} deaktivieren` : `${item.name} aktivieren`;
       const toggle = element('input'); toggle.type = 'checkbox'; toggle.checked = item.enabled;
       toggle.setAttribute('aria-label', `${item.name} aktivieren`);
       const slider = element('span', 'mod-slider');
@@ -138,7 +144,6 @@ function renderInstalled() {
       };
       actions.append(label);
       const delBtn = element('button', 'icon-button delete-mod');
-      delBtn.title = `${activeContentType === 'resourcepacks' ? 'Ressourcenpaket' : activeContentType === 'shaders' ? 'Shader-Paket' : 'Mod'} löschen`;
       delBtn.setAttribute('aria-label', `${item.name} löschen`);
       delBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></svg>';
       delBtn.onclick = async () => {
@@ -147,7 +152,7 @@ function renderInstalled() {
         try {
           const result = await api.removeMod({ profileId: id, name: item.filename, type: activeContentType });
           if (model.detailId === id) { model.details = result; renderInstalled(); }
-          toast(`${item.name} wurde entfernt.`);
+          toast(`${item.name} ${t('modRemoved')}`);
         } catch (error) {
           toast(error.message, true);
           delBtn.disabled = false;
@@ -158,32 +163,54 @@ function renderInstalled() {
     }
     list.append(row);
   }
+  const updateCount = (data.mods || []).filter(m => m.hasUpdate).length;
+  const updateAllBtn = $('update-all-mods');
+  if (updateAllBtn) {
+    if (activeContentType === 'mods' && updateCount > 0) {
+      updateAllBtn.hidden = false;
+      updateAllBtn.innerHTML = `<i data-icon="download"></i><span>${t('updateAll')} (${updateCount})</span>`;
+    } else {
+      updateAllBtn.hidden = true;
+    }
+  }
+  const checkUpdatesBtn = $('check-mod-updates');
+  if (checkUpdatesBtn) {
+    checkUpdatesBtn.hidden = activeContentType !== 'mods' || data.profile.mode === 'vanilla';
+  }
   if (!list.children.length) {
-    const emptyMsg = query ? 'Keine Treffer für diese Suche.' :
-      activeContentType === 'resourcepacks' ? 'Noch keine Ressourcenpakete installiert. Füge deine ersten Texturen hinzu.' :
-      activeContentType === 'shaders' ? 'Noch keine Shader-Pakete installiert. Füge deine ersten Shader hinzu.' :
-      profile()?.mode === 'vanilla' ? 'Dieses Vanilla-Profil verwendet keine Mods.' :
-      'Noch keine Mods installiert. Füge deine ersten Mods hinzu.';
+    const emptyMsg = query ? t('noSearchHits', 'Keine Treffer für diese Suche.') :
+      activeContentType === 'resourcepacks' ? t('noRpInstalled') :
+      activeContentType === 'shaders' ? t('noShadersInstalled') :
+      profile()?.mode === 'vanilla' ? t('vanillaProfileNoMods') :
+      t('noModsInstalled');
     list.append(element('p', 'source-empty', emptyMsg));
   }
 }
 
-async function checkUpdatesForProfile(profileId) {
+async function checkUpdatesForProfile(profileId, showFeedback = false) {
   try {
     const updates = await api.checkModUpdates(profileId);
-    if (!updates || !updates.length || model.detailId !== profileId) return;
+    if (model.detailId !== profileId) return;
     let hasChange = false;
-    for (const u of updates) {
-      const mod = model.details?.mods?.find(m => m.filename === u.filename);
-      if (mod && !mod.hasUpdate) {
-        mod.hasUpdate = true;
-        mod.latestVersion = u.latestVersion;
-        mod.latestVersionId = u.latestVersionId;
+    for (const mod of (model.details?.mods || [])) {
+      const u = updates?.find(up => up.filename === mod.filename);
+      if (u) {
+        if (!mod.hasUpdate || mod.latestVersion !== u.latestVersion) {
+          mod.hasUpdate = true;
+          mod.latestVersion = u.latestVersion;
+          mod.latestVersionId = u.latestVersionId;
+          hasChange = true;
+        }
+      } else if (mod.hasUpdate) {
+        mod.hasUpdate = false;
         hasChange = true;
       }
     }
     if (hasChange) renderInstalled();
-  } catch {}
+    return updates?.length || 0;
+  } catch (err) {
+    if (showFeedback) throw err;
+  }
 }
 
 async function refresh() {
@@ -200,10 +227,10 @@ async function refresh() {
 }
 
 function installed(hit) {
-  if (drawerContentType === 'mods' && profile()?.mode === 'caeser' && ((source === 'modrinth' && hit.id === 'P7dR8mSH') || (source === 'curseforge' && hit.id === '306612'))) return 'Enthalten';
+  if (drawerContentType === 'mods' && profile()?.mode === 'caeser' && ((source === 'modrinth' && hit.id === 'P7dR8mSH') || (source === 'curseforge' && hit.id === '306612'))) return t('included');
   const list = drawerContentType === 'resourcepacks' ? model.details?.resourcepacks : drawerContentType === 'shaders' ? model.details?.shaders : model.details?.mods;
   const match = list?.find(m => m.source === source && m.projectId === hit.id);
-  return match ? (match.enabled ? 'Installiert' : 'Deaktiviert') : null;
+  return match ? (match.enabled ? t('installed') : t('disabled')) : null;
 }
 
 function updateDrawerHeader() {
@@ -211,11 +238,11 @@ function updateDrawerHeader() {
   $('drawer-profile-name').textContent = p.name;
   const eyebrow = $('drawer-eyebrow');
   if (eyebrow) {
-    eyebrow.textContent = drawerContentType === 'resourcepacks' ? 'RESSOURCENPAKETE HINZUFÜGEN' : drawerContentType === 'shaders' ? 'SHADER-PAKETE HINZUFÜGEN' : 'MODS HINZUFÜGEN';
+    eyebrow.textContent = drawerContentType === 'resourcepacks' ? t('addRpEyebrow') : drawerContentType === 'shaders' ? t('addShadersEyebrow') : t('addModsEyebrow');
   }
   const searchInput = $('mod-search');
   if (searchInput) {
-    searchInput.placeholder = drawerContentType === 'resourcepacks' ? 'Ressourcenpakete entdecken …' : drawerContentType === 'shaders' ? 'Shader entdecken …' : 'Mods entdecken …';
+    searchInput.placeholder = drawerContentType === 'resourcepacks' ? t('searchResourcePacksPlaceholder') : drawerContentType === 'shaders' ? t('searchShadersPlaceholder') : t('searchModsPlaceholder');
   }
   $('mod-version-filter').textContent = p.version;
   $('mod-loader-filter').textContent = drawerContentType === 'mods' ? (p.mode === 'caeser' ? 'Fabric' : p.mode === 'fabric' ? 'Fabric' : 'Vanilla') : (drawerContentType === 'resourcepacks' ? 'Resource Pack' : 'Shader');
@@ -225,22 +252,29 @@ function updateDrawerHeader() {
 
 function renderResults() {
   const list = $('mod-results'); list.replaceChildren();
+  const isEn = currentLanguage === 'en';
   for (const hit of hits) {
     const row = element('article', 'mod-result'), img = element('img', 'mod-icon'); img.alt = ''; modIcon(img, hit.iconUrl);
     const body = element('div'), name = element('h3', '', hit.title);
-    name.append(element('span', 'mod-author', `von ${hit.author}`));
-    body.append(name, element('p', '', hit.description), element('small', '', `${Number(hit.downloads || 0).toLocaleString('de-DE')} Downloads`));
-    const button = element('button', 'secondary', installed(hit) || 'Installieren'); button.disabled = installing || !!installed(hit);
+    name.append(element('span', 'mod-author', isEn ? `by ${hit.author}` : `von ${hit.author}`));
+    body.append(name, element('p', '', hit.description), element('small', '', `${Number(hit.downloads || 0).toLocaleString(isEn ? 'en-US' : 'de-DE')} Downloads`));
+    const button = element('button', 'secondary', installed(hit) || t('install')); button.disabled = installing || !!installed(hit);
     button.onclick = () => install(hit); row.append(img, body, button); list.append(row);
   }
   if (!hits.length) {
-    const emptyMsg = drawerContentType === 'resourcepacks' ? 'Keine passenden Ressourcenpakete gefunden. Versuche einen anderen Suchbegriff.' : drawerContentType === 'shaders' ? 'Keine passenden Shader gefunden. Versuche einen anderen Suchbegriff.' : 'Keine passenden Mods gefunden. Versuche einen anderen Suchbegriff.';
+    const emptyMsg = drawerContentType === 'resourcepacks'
+      ? (isEn ? 'No matching resource packs found. Try a different search term.' : 'Keine passenden Ressourcenpakete gefunden. Versuche einen anderen Suchbegriff.')
+      : drawerContentType === 'shaders'
+      ? (isEn ? 'No matching shader packs found. Try a different search term.' : 'Keine passenden Shader gefunden. Versuche einen anderen Suchbegriff.')
+      : (isEn ? 'No matching mods found. Try a different search term.' : 'Keine passenden Mods gefunden. Versuche einen anderen Suchbegriff.');
     list.append(element('p', 'source-empty', emptyMsg));
   }
   $('more-mods').hidden = hits.length >= total; $('more-mods').disabled = installing;
   if (!installing) {
-    const itemNoun = drawerContentType === 'resourcepacks' ? 'Pakete' : drawerContentType === 'shaders' ? 'Shader' : 'Mods';
-    $('mod-results-status').textContent = `${hits.length} von ${total.toLocaleString('de-DE')} ${itemNoun}`;
+    const itemNoun = drawerContentType === 'resourcepacks' ? (isEn ? 'packs' : 'Pakete') : drawerContentType === 'shaders' ? 'Shader' : 'Mods';
+    $('mod-results-status').textContent = isEn
+      ? `${hits.length} of ${total.toLocaleString('en-US')} ${itemNoun}`
+      : `${hits.length} von ${total.toLocaleString('de-DE')} ${itemNoun}`;
   }
 }
 
@@ -248,30 +282,31 @@ async function search(append = false) {
   const p = profile(); if (!p || !$('mods-drawer').open) return;
   const request = ++generation, selectedSource = source, currentType = drawerContentType;
   $('more-mods').hidden = true;
-  if (!append) { hits = []; $('mod-results').replaceChildren(element('p', 'mod-loading', 'Wird gesucht …')); }
+  if (!append) { hits = []; $('mod-results').replaceChildren(element('p', 'mod-loading', t('searching'))); }
   try {
     const result = await api.searchMods({ profileId: p.id, source: selectedSource, query: $('mod-search').value.trim(), offset: append ? hits.length : 0, type: currentType });
     if (request !== generation || p.id !== model.detailId || currentType !== drawerContentType) return;
     hits = append ? [...hits, ...result.hits] : result.hits; total = result.total; renderResults();
   } catch (error) {
     if (request !== generation) return;
-    const box = element('div', 'source-empty'); box.append(element('h3', '', 'Quelle nicht verfügbar'), element('p', '', error.message));
-    if (selectedSource === 'curseforge') { const button = element('button', 'secondary', 'Mod-Quellen öffnen'); button.onclick = () => { $('mods-drawer').close(); navigate('settings'); $('mod-settings').open = true; $('curseforge-key').focus(); }; box.append(button); }
-    $('mod-results').replaceChildren(box); $('mod-results-status').textContent = 'Suche fehlgeschlagen';
+    const box = element('div', 'source-empty'); box.append(element('h3', '', currentLanguage === 'en' ? 'Source unavailable' : 'Quelle nicht verfügbar'), element('p', '', error.message));
+    if (selectedSource === 'curseforge') { const button = element('button', 'secondary', currentLanguage === 'en' ? 'Open mod sources' : 'Mod-Quellen öffnen'); button.onclick = () => { $('mods-drawer').close(); navigate('settings'); $('mod-settings').open = true; $('curseforge-key').focus(); }; box.append(button); }
+    $('mod-results').replaceChildren(box); $('mod-results-status').textContent = currentLanguage === 'en' ? 'Search failed' : 'Suche fehlgeschlagen';
   }
 }
 
 async function install(hit) {
   if (installing) return;
   const id = model.detailId, selectedSource = source, currentType = drawerContentType; installing = true; renderResults();
-  $('mod-results-status').textContent = `${hit.title}: Kompatibilität prüfen …`;
+  const isEn = currentLanguage === 'en';
+  $('mod-results-status').textContent = isEn ? `${hit.title}: Checking compatibility …` : `${hit.title}: Kompatibilität prüfen …`;
   let message;
   try {
     const data = await api.installMod({ profileId: id, source: selectedSource, projectId: hit.id, type: currentType });
     if (id === model.detailId) { model.details = data; renderInstalled(); }
     message = currentType === 'mods'
-      ? `${hit.title} wurde mit benötigten Abhängigkeiten installiert.`
-      : `${hit.title} wurde erfolgreich hinzugefügt.`;
+      ? (isEn ? `${hit.title} was installed with required dependencies.` : `${hit.title} wurde mit benötigten Abhängigkeiten installiert.`)
+      : (isEn ? `${hit.title} was added successfully.` : `${hit.title} wurde erfolgreich hinzugefügt.`);
     toast(message);
   } catch (error) { message = error.message; toast(error.message, true); }
   finally { installing = false; if ($('mods-drawer').open) { renderResults(); $('mod-results-status').textContent = message; } }
@@ -333,22 +368,83 @@ export function initDetails() {
     caeserBtn.onclick = () => action(async () => {
       const p = profile();
       if (!p || p.version !== '1.21.11' || p.mode === 'vanilla') return;
-      caeserBtn.disabled = true; caeserBtn.textContent = 'Wird installiert …';
+      caeserBtn.disabled = true; caeserBtn.textContent = t('installCaeserModProgress');
       try {
         const result = await api.installCaeserMod(p.id);
         if (model.detailId === p.id) { model.details = result; renderInstalled(); header(); }
-        toast('Caeser Client Mod wurde erfolgreich installiert!');
+        toast(t('caeserModInstalledSuccess'));
       } catch (err) { toast(err.message, true); header(); }
     });
   }
 
+  const checkBtn = $('check-mod-updates');
+  if (checkBtn) {
+    checkBtn.onclick = async () => {
+      const p = profile(); if (!p || p.mode === 'vanilla') return;
+      checkBtn.disabled = true;
+      checkBtn.classList.add('checking');
+      try {
+        await checkUpdatesForProfile(p.id, true);
+        const updates = (model.details?.mods || []).filter(m => m.hasUpdate).length;
+        if (updates > 0) {
+          toast(currentLanguage === 'en' ? `${updates} ${t('modsUpdatesFound')}` : `${updates} ${t('modsUpdatesFound')}`);
+        } else {
+          toast(t('allModsUpToDate'));
+        }
+      } catch (err) {
+        toast(err.message, true);
+      } finally {
+        checkBtn.disabled = false;
+        checkBtn.classList.remove('checking');
+      }
+    };
+  }
+
+  const updateAllBtn = $('update-all-mods');
+  if (updateAllBtn) {
+    updateAllBtn.onclick = async () => {
+      const p = profile(); if (!p) return;
+      updateAllBtn.disabled = true;
+      updateAllBtn.textContent = t('updating');
+      try {
+        const toUpdate = (model.details?.mods || []).filter(m => m.hasUpdate);
+        for (const item of toUpdate) {
+          try {
+            model.details = await api.updateMod({ profileId: p.id, name: item.filename });
+          } catch (e) {
+            console.error('Update failed for', item.name, e);
+          }
+        }
+        renderInstalled();
+        await checkUpdatesForProfile(p.id);
+        toast(t('allModsUpdatedSuccess'));
+      } catch (err) {
+        toast(err.message, true);
+      } finally {
+        updateAllBtn.disabled = false;
+        renderInstalled();
+      }
+    };
+  }
+
+  document.addEventListener('language-change', () => {
+    if (model.detailId) {
+      header();
+      renderInstalled();
+      if ($('mods-drawer').open) {
+        updateDrawerHeader();
+        renderResults();
+      }
+    }
+  });
+
   $('mods-drawer').addEventListener('close', () => { generation++; clearTimeout(timer); });
-  $('mod-search').oninput = () => { generation++; clearTimeout(timer); $('mod-results').replaceChildren(element('p', 'mod-loading', 'Wird gesucht …')); $('more-mods').hidden = true; timer = setTimeout(() => search(), 300); };
+  $('mod-search').oninput = () => { generation++; clearTimeout(timer); $('mod-results').replaceChildren(element('p', 'mod-loading', t('searching'))); $('more-mods').hidden = true; timer = setTimeout(() => search(), 300); };
   document.querySelectorAll('[data-source]').forEach(button => button.onclick = () => {
     source = button.dataset.source; document.querySelectorAll('[data-source]').forEach(b => b.classList.toggle('selected', b === button)); search();
   });
   $('more-mods').onclick = () => search(true);
-  api.on('mod-progress', event => { if (event.profileId === model.detailId && installing) $('mod-results-status').textContent = event.stage === 'done' ? 'Installation abgeschlossen.' : `${event.name} wird verarbeitet …`; });
+  api.on('mod-progress', event => { if (event.profileId === model.detailId && installing) $('mod-results-status').textContent = event.stage === 'done' ? (currentLanguage === 'en' ? 'Installation complete.' : 'Installation abgeschlossen.') : (currentLanguage === 'en' ? `Processing ${event.name} …` : `${event.name} wird verarbeitet …`); });
   api.on('game-exit', () => { document.body.classList.remove('in-game'); if (model.detailId) refresh(); });
   api.on('game-spawn', () => { document.body.classList.add('in-game'); });
 }

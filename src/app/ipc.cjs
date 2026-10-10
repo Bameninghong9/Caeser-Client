@@ -21,6 +21,7 @@ function register(controller, win, pageURL, logManager) {
   handle('mod-remove',input=>controller.mods.remove(input));
   handle('mod-check-updates',id=>controller.mods.checkUpdates(id));
   handle('mod-update',input=>controller.mods.update(input));
+  handle('mod-update-all',id=>controller.mods.updateAll({ profileId: id }));
   handle('caeser-mod-install',id=>controller.installCaeserMod(id));
   handle('account-avatar',async id=>{ const account=controller.accounts.find(a=>a.id === id); return account ? avatar(account) : null; });
   handle('skins-get', () => controller.getSkins());

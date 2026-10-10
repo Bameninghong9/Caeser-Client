@@ -271,11 +271,27 @@ class Mods {
   async checkUpdates(profileId) {
     const profile = this.profile(profileId);
     const details = await this.details(profileId);
-    const candidates = details.mods.filter(m => !m.managed && m.source && m.projectId);
+    const candidates = details.mods.filter(m => !m.managed);
     if (!candidates.length) return [];
     const checks = await Promise.allSettled(candidates.map(async m => {
-      const provider = this.provider(m.source);
-      const latest = await provider.version(profile, m.projectId);
+      let source = m.source, projectId = m.projectId;
+      if (!source || !projectId) {
+        const cleanName = m.name.replace(/\.jar$/i, '').replace(/[-_]fabric.*$/i, '').replace(/[-_]v?\d+.*$/i, '').trim();
+        if (cleanName.length >= 2) {
+          try {
+            const modrinthProvider = this.provider('modrinth');
+            const searchRes = await modrinthProvider.search(profile, cleanName, 0);
+            const exactMatch = searchRes.hits?.find(h => h.slug?.toLowerCase() === cleanName.toLowerCase() || h.title?.toLowerCase() === cleanName.toLowerCase());
+            if (exactMatch) {
+              source = 'modrinth';
+              projectId = exactMatch.id;
+            }
+          } catch {}
+        }
+      }
+      if (!source || !projectId) return null;
+      const provider = this.provider(source);
+      const latest = await provider.version(profile, projectId);
       if (latest && compatible(latest, profile)) {
         const isDiff = (m.versionId && String(m.versionId) !== String(latest.id)) ||
                        (m.version && m.version !== latest.label);
@@ -291,6 +307,19 @@ class Mods {
       return null;
     }));
     return checks.filter(c => c.status === 'fulfilled' && c.value).map(c => c.value);
+  }
+  async updateAll({ profileId }) {
+    const updates = await this.checkUpdates(profileId);
+    let count = 0;
+    for (const u of updates) {
+      try {
+        await this.update({ profileId, name: u.filename });
+        count++;
+      } catch (e) {
+        console.error('Update failed for', u.filename, e);
+      }
+    }
+    return this.details(profileId);
   }
   async update({ profileId, name }) { return this.mutate(async () => {
     const profile = this.profile(profileId);

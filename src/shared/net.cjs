@@ -24,7 +24,13 @@ async function hash(file, algorithm = 'sha1') {
 }
 async function download(url, file, checksum, algorithm = 'sha1') {
   if (!url.startsWith('https://')) throw new Error('Unsichere Download-Adresse verworfen.');
-  try { if (checksum && await hash(file, algorithm) === checksum.toLowerCase()) return; } catch {}
+  try {
+    const st = await fs.stat(file);
+    if (st.size > 0) {
+      if (!checksum) return;
+      if (await hash(file, algorithm) === checksum.toLowerCase()) return;
+    }
+  } catch {}
   await fs.mkdir(path.dirname(file), { recursive: true });
   const temporary = `${file}.${crypto.randomUUID()}.part`;
   try {
@@ -32,8 +38,13 @@ async function download(url, file, checksum, algorithm = 'sha1') {
     if (!response.ok) throw new Error(`Download fehlgeschlagen (HTTP ${response.status}).`);
     await pipeline(Readable.fromWeb(response.body), createWriteStream(temporary));
     if (checksum && await hash(temporary, algorithm) !== checksum.toLowerCase()) throw new Error('Die Prüfsumme des Downloads stimmt nicht. Bitte erneut versuchen.');
-    await fs.rename(temporary, file);
-  } finally { await fs.rm(temporary, { force: true }); }
+    try {
+      await fs.rename(temporary, file);
+    } catch (renameErr) {
+      const existing = await fs.stat(file).catch(() => null);
+      if (!existing || existing.size === 0) throw renameErr;
+    }
+  } finally { await fs.rm(temporary, { force: true }).catch(() => {}); }
 }
 function inside(root, relative) {
   const result = path.resolve(root, relative);

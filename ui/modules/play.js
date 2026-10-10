@@ -66,7 +66,7 @@ function renderPlay() {
   }
   const openProf = $('play-open-profile');
   if (openProf) openProf.disabled = !profile;
-  if (!model.busy && !model.running) $('progress-label').textContent = currentAccount() ? 'Bereit, wenn du es bist.' : 'Melde dich an, um loszuspielen.';
+  if (!model.busy) $('progress-label').textContent = currentAccount() ? 'Bereit, wenn du es bist.' : 'Melde dich an, um loszuspielen.';
 }
 export function initPlay() {
   onState(renderPlay);
@@ -83,19 +83,33 @@ export function initPlay() {
   if (dropNew) dropNew.onclick = () => { if (dropMenu) dropMenu.hidden = true; openProfile(); };
   $('play-button').onclick = () => action(async () => {
     if (!currentProfile()) { openProfile(); return; } if (!currentAccount()) { showAccounts(); return; }
-    if (model.busy || model.running) return;
+    if (model.busy) return;
     model.busy = true; $('play-button').disabled = true; $('play-label').textContent = 'Startet …';
-    try { const result = await api.launch(); model.running = result.running; $('play-label').textContent = result.running ? 'Läuft' : 'Spielen'; $('play-button').disabled = result.running; }
+    try {
+      const result = await api.launch();
+      model.running = false;
+      $('play-label').textContent = 'Spielen';
+      $('play-button').disabled = false;
+      toast('Minecraft gestartet!');
+    }
     catch (error) { $('play-button').disabled = false; $('play-label').textContent = 'Spielen'; $('progress-label').textContent = 'Start fehlgeschlagen. Bitte erneut versuchen.'; throw error; }
     finally { model.busy = false; }
   });
   api.on('progress', progress => { $('progress-label').textContent = progress.stage; $('progress-fill').classList.toggle('indeterminate', progress.percent === null); $('progress-fill').style.width = progress.percent === null ? '30%' : `${progress.percent}%`; });
   const lines = [];
   api.on('game-log', line => { lines.push(line); if (lines.length > 500) lines.shift(); $('game-log').textContent = lines.join('\n'); $('game-log').scrollTop = $('game-log').scrollHeight; });
-  api.on('game-exit', ({ code, diagnosis }) => {
+  api.on('game-exit', ({ code, diagnosis, runningCount }) => {
     action(async()=>update(await api.state()));
-    model.running = false; $('play-button').disabled = false; $('play-label').textContent = 'Spielen'; $('progress-fill').classList.remove('indeterminate'); $('progress-fill').style.width = '0%';
-    $('progress-label').textContent = code === 0 ? 'Minecraft wurde beendet.' : `Minecraft wurde beendet (Code ${code}).`;
+    model.running = (runningCount && runningCount > 0);
+    $('play-button').disabled = false;
+    $('play-label').textContent = 'Spielen';
+    if (!runningCount || runningCount === 0) {
+      $('progress-fill').classList.remove('indeterminate');
+      $('progress-fill').style.width = '0%';
+      $('progress-label').textContent = code === 0 ? 'Minecraft wurde beendet.' : `Minecraft wurde beendet (Code ${code}).`;
+    } else {
+      $('progress-label').textContent = `Minecraft-Instanz beendet (${runningCount} läuft noch).`;
+    }
     if (code !== 0) {
       if (diagnosis) {
         showCrashDoctor(diagnosis);

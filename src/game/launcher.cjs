@@ -190,7 +190,11 @@ async function prepare({ root, version, mode, instanceKey, javaPath, resources, 
     let targetMtime = 0;
     try { targetMtime = (await fs.stat(targetJar)).mtimeMs; } catch {}
     if (!targetMtime || newestMtime > targetMtime) {
-      await fs.copyFile(newestSource, targetJar);
+      try {
+        await fs.copyFile(newestSource, targetJar);
+      } catch (copyErr) {
+        if (!targetMtime) throw copyErr;
+      }
     }
     const apiVersion = '0.140.2+1.21.11';
     const name = `fabric-api-${apiVersion}.jar`;

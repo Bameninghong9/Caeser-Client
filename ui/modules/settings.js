@@ -206,8 +206,10 @@ export function initSettings() {
     });
 
     // Atmosphere
-    const atmo = settings.atmosphere || 'obsidian';
-    document.body.classList.remove('atmo-obsidian', 'atmo-grid', 'atmo-space', 'atmo-aurora');
+    let atmo = settings.atmosphere || 'nebula';
+    if (atmo === 'obsidian') atmo = 'nebula';
+    if (atmo === 'aurora') atmo = 'rain';
+    document.body.classList.remove('atmo-obsidian', 'atmo-grid', 'atmo-space', 'atmo-aurora', 'atmo-nebula', 'atmo-rain');
     document.body.classList.add(`atmo-${atmo}`);
     const atmoLayer = $('atmosphere-layer');
     if (atmoLayer) {

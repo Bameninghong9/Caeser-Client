@@ -1,5 +1,6 @@
 import { $, api, model, update, onState, action, toast, loaderName, navigate, openDetails, relativeTime } from './common.js';
 import { icon } from './icons.js';
+import { t, currentLanguage } from './i18n.js';
 let editing = null, selectedLoader = 'vanilla', pendingDelete = null, saving = false;
 let profileFilter = 'all';
 const supportsFabric = version => !/^(old_|[abc]\d)/.test(version) && (!/^1\.(\d+)/.test(version) || Number(version.match(/^1\.(\d+)/)[1]) >= 14);
@@ -10,7 +11,7 @@ function versions() {
   if (editing && !list.some(v => v.id === editing.version)) list.unshift({ id: editing.version });
   for (const v of list) { const option = document.createElement('option'); option.value = v.id; option.textContent = v.id; $('profile-version').append(option); }
   if (list.some(v => v.id === selected)) $('profile-version').value = selected;
-  $('version-state').textContent = model.catalogueReady ? `${list.length} Versionen` : 'Versionsliste nicht geladen';
+  $('version-state').textContent = model.catalogueReady ? `${list.length} ${t('versionsCount', 'Versionen')}` : t('versionListNotLoaded', 'Versionsliste nicht geladen');
   $('save-profile').disabled = !editing && !model.catalogueReady;
   refreshLoaders();
 }
@@ -22,21 +23,21 @@ function refreshLoaders() {
     button.disabled = !!editing || (mode === 'fabric' && !supportsFabric(version));
     button.classList.toggle('selected', mode === selectedLoader); button.setAttribute('aria-pressed', mode === selectedLoader);
   });
-  $('loader-note').textContent = { vanilla: 'Vanilla ohne zusätzliche Mods.', fabric: 'Fabric Loader. Eigene Mods kommen in den Profilordner.' }[selectedLoader] || '';
+  $('loader-note').textContent = { vanilla: t('vanillaNote', 'Vanilla ohne zusätzliche Mods.'), fabric: t('fabricNote', 'Fabric Loader. Eigene Mods kommen in den Profilordner.') }[selectedLoader] || '';
 }
 function memory() {
   const amount = Number($('profile-memory').value);
   const minimum = Number($('profile-memory').min), maximum = Number($('profile-memory').max);
   $('profile-memory').style.setProperty('--ram-fill', `${maximum === minimum ? 100 : (amount-minimum)/(maximum-minimum)*100}%`);
   $('profile-memory-value').replaceChildren(document.createTextNode(`${amount} MB `));
-  const gb = document.createElement('small'); gb.textContent = `(${(amount / 1024).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} GB)`;
+  const gb = document.createElement('small'); gb.textContent = `(${(amount / 1024).toLocaleString(currentLanguage === 'en' ? 'en-US' : 'de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} GB)`;
   $('profile-memory-value').append(gb);
 }
 export function openProfile(profile = null) {
   editing = profile; selectedLoader = profile?.mode || 'vanilla';
   $('profile-name').value = profile?.name || '';
-  $('profile-dialog-title').textContent = profile ? 'Profil bearbeiten' : 'Profil erstellen';
-  $('save-profile').textContent = profile ? 'Speichern' : 'Profil erstellen';
+  $('profile-dialog-title').textContent = profile ? t('editProfile', 'Profil bearbeiten') : t('createProfile', 'Profil erstellen');
+  $('save-profile').textContent = profile ? t('save', 'Speichern') : t('createProfile', 'Profil erstellen');
   $('profile-error').hidden = true; $('profile-edit-note').hidden = !profile;
   $('profile-version').disabled = !!profile; $('show-snapshots').disabled = !!profile;
   $('show-snapshots').checked = profile ? model.versions.find(v => v.id === profile.version)?.type !== 'release' : false;
@@ -50,14 +51,14 @@ export function openProfile(profile = null) {
 function renderProfiles() {
   const { profiles, activeProfileId } = model.state;
   $('profile-count').textContent = profiles.length; const grid = $('profiles-grid'); grid.replaceChildren();
-  if (!profiles.length) { $('profiles-result-count').textContent = '0 Profiles'; grid.innerHTML = '<div class="empty"><h3>Platz für deine nächste Welt.</h3><p>Erstelle oben dein erstes Profil.</p></div>'; return; }
+  if (!profiles.length) { $('profiles-result-count').textContent = '0 Profiles'; grid.innerHTML = `<div class="empty"><h3>${t('emptyProfilesTitle', 'Platz für deine nächste Welt.')}</h3><p>${t('emptyProfilesSubtitle', 'Erstelle oben dein erstes Profil.')}</p></div>`; return; }
   const query=$('profile-search').value.trim().toLowerCase();
   const filtered=profiles.filter(p=>(profileFilter === 'all' || p.mode === profileFilter) && `${p.name} ${p.version} ${loaderName(p.mode)}`.toLowerCase().includes(query));
   $('profiles-result-count').textContent=`${filtered.length} Profiles`;
-  if (!filtered.length) grid.innerHTML='<div class="empty"><h3>Kein passendes Profil.</h3><p>Versuche einen anderen Namen oder Filter.</p></div>';
+  if (!filtered.length) grid.innerHTML=`<div class="empty"><h3>${t('noMatchProfileTitle', 'Kein passendes Profil.')}</h3><p>${t('noMatchProfileSubtitle', 'Versuche einen anderen Namen oder Filter.')}</p></div>`;
   for (const profile of filtered) {
     const card = document.createElement('article'); card.className = 'profile-card'; card.classList.toggle('active', profile.id === activeProfileId);
-    card.tabIndex=0; card.setAttribute('aria-label',`Profil ${profile.name} öffnen`);
+    card.tabIndex=0; card.setAttribute('aria-label',`${t('profile', 'Profil')} ${profile.name}`);
     card.innerHTML = `<div class="profile-cover"><img alt=""><span class="badge"></span><span class="active-badge">✓</span></div><div class="profile-body"><h3></h3><p></p><small class="profile-last"></small></div><div class="profile-actions"><button class="secondary select-profile"></button><button class="icon-button edit-profile" aria-label="Profil bearbeiten">${icon('edit')}</button><button class="icon-button delete-profile" aria-label="Profil entfernen">${icon('trash')}</button></div>`;
     card.querySelector('img').src = `assets/loaders/${profile.mode}.svg`;
     card.querySelector('.badge').textContent = loaderName(profile.mode);
@@ -65,10 +66,10 @@ function renderProfiles() {
     card.querySelector('h3').textContent = profile.name; card.querySelector('h3').title = profile.name;
     card.querySelector('.profile-body p').textContent = `${profile.version} · ${loaderName(profile.mode)} · ${profile.memoryMb/1024} GB`;
     card.querySelector('.profile-last').textContent=relativeTime(profile.lastPlayedAt);
-    card.querySelector('.select-profile').textContent = profile.id === activeProfileId ? '▶ Spielen' : 'Auswählen';
+    card.querySelector('.select-profile').textContent = profile.id === activeProfileId ? (currentLanguage === 'en' ? '▶ Play' : '▶ Spielen') : t('select', 'Auswählen');
     card.querySelector('.select-profile').onclick = () => action(async () => { update(await api.selectProfile(profile.id)); navigate('play'); });
     card.querySelector('.edit-profile').onclick = () => openProfile(profile);
-    card.querySelector('.delete-profile').onclick = () => { pendingDelete = profile.id; $('delete-description').textContent = `„${profile.name}“ wird aus deiner Profilliste entfernt.`; $('delete-dialog').showModal(); };
+    card.querySelector('.delete-profile').onclick = () => { pendingDelete = profile.id; $('delete-description').textContent = currentLanguage === 'en' ? `"${profile.name}" will be removed from your profile list.` : `„${profile.name}“ wird aus deiner Profilliste entfernt.`; $('delete-dialog').showModal(); };
     card.onclick=event=>{if(!event.target.closest('button')) openDetails(profile.id);};
     card.onkeydown=event=>{if(event.target === card && ['Enter',' '].includes(event.key)){event.preventDefault();openDetails(profile.id);}};
     grid.append(card);
@@ -81,6 +82,7 @@ export function initProfiles() {
   $('new-profile').onclick = () => openProfile(); $('first-profile').onclick = () => openProfile();
   $('profile-version').onchange = refreshLoaders; $('show-snapshots').onchange = versions; $('profile-memory').oninput = memory;
   document.querySelectorAll('[data-loader]').forEach(button => button.onclick = () => { selectedLoader = button.dataset.loader; refreshLoaders(); });
+  document.addEventListener('language-change', () => { renderProfiles(); if ($('profile-dialog').open) { versions(); refreshLoaders(); } });
   $('profile-dialog').addEventListener('cancel', event => { if (saving) event.preventDefault(); });
   $('profile-form').onsubmit = async event => {
     event.preventDefault(); if (saving) return; saving = true; $('save-profile').disabled = true; $('profile-error').hidden = true;
@@ -88,9 +90,9 @@ export function initProfiles() {
     try {
       update(await api.saveProfile({ ...(editing ? { id: editing.id } : {}), name: $('profile-name').value,
         version: $('profile-version').value, mode: selectedLoader, memoryMb: Number($('profile-memory').value) }));
-      $('profile-dialog').close(); toast(editing ? 'Profil gespeichert.' : 'Profil erstellt.');
+      $('profile-dialog').close(); toast(editing ? t('profileSaved', 'Profil gespeichert.') : t('profileCreated', 'Profil erstellt.'));
     } catch (error) { $('profile-error').textContent = error.message; $('profile-error').hidden = false; }
     finally { saving = false; $('save-profile').disabled = false; $('profile-dialog').querySelectorAll('[data-close]').forEach(b => b.disabled = false); }
   };
-  $('confirm-delete').onclick = () => action(async () => { update(await api.removeProfile(pendingDelete)); $('delete-dialog').close(); toast('Profil entfernt. Spieldateien bleiben erhalten.'); });
+  $('confirm-delete').onclick = () => action(async () => { update(await api.removeProfile(pendingDelete)); $('delete-dialog').close(); toast(t('profileDeleted', 'Profil entfernt. Spieldateien bleiben erhalten.')); });
 }

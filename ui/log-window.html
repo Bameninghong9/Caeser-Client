@@ -10,12 +10,14 @@
       --accent: #b23cee;
       --bg: #0e0d14;
       --surface: #15131e;
+      --surface-hover: #1c1928;
       --surface-border: rgba(255, 255, 255, 0.08);
       --text: #eae6f2;
       --muted: #887d96;
       --info: #80c7ff;
       --warn: #ffbe3b;
       --error: #ff4766;
+      --success: #00e676;
     }
     * { box-sizing: border-box; }
     body {
@@ -31,6 +33,7 @@
       overflow: hidden;
       user-select: none;
     }
+
     /* Titlebar */
     .titlebar {
       height: 36px;
@@ -42,6 +45,7 @@
       padding-left: 14px;
       -webkit-app-region: drag;
       flex-shrink: 0;
+      z-index: 20;
     }
     .title-left {
       display: flex;
@@ -79,6 +83,23 @@
     }
     .win-btn:hover { background: rgba(255, 255, 255, 0.08); color: #ffffff; }
     .win-btn.close:hover { background: #e81123; color: #ffffff; }
+
+    /* App Workspace Layout: Left Terminal, Right Instances Sidebar */
+    .app-body {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+      position: relative;
+    }
+
+    .main-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      background: #09080e;
+    }
 
     /* Toolbar */
     .toolbar {
@@ -132,8 +153,8 @@
     .search-box {
       position: relative;
       flex: 1;
-      min-width: 140px;
-      max-width: 260px;
+      min-width: 130px;
+      max-width: 240px;
     }
     .search-input {
       width: 100%;
@@ -249,6 +270,265 @@
       font-family: inherit;
     }
 
+    /* Instances Sidebar (Right Panel) */
+    .instances-sidebar {
+      width: 260px;
+      min-width: 260px;
+      background: #110f17;
+      border-left: 1px solid var(--surface-border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+    .sidebar-header {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--surface-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #15121e;
+    }
+    .sidebar-title-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #b5a4cb;
+    }
+    .sidebar-title-group svg {
+      width: 15px;
+      height: 15px;
+      color: var(--accent);
+    }
+    .instances-count-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--accent) 25%, transparent);
+      color: color-mix(in srgb, var(--accent) 80%, #fff);
+      border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    }
+
+    .instances-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .instances-list::-webkit-scrollbar { width: 6px; }
+    .instances-list::-webkit-scrollbar-thumb { background: #262132; border-radius: 3px; }
+
+    .instance-card {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #171420;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      cursor: pointer;
+      transition: all .18s ease;
+    }
+    .instance-card:hover {
+      background: #1f1a2b;
+      border-color: rgba(255, 255, 255, 0.14);
+      transform: translateY(-1px);
+    }
+    .instance-card.active {
+      background: color-mix(in srgb, var(--accent) 14%, #181423);
+      border-color: var(--accent);
+      box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 22%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    }
+
+    .instance-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      background: #251d30;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: var(--accent);
+    }
+    .instance-icon svg { width: 18px; height: 18px; }
+
+    .instance-info {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .instance-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .instance-sub {
+      font-size: 10px;
+      color: #9284a3;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .instance-uptime {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .instance-uptime.running { color: #00e676; }
+    .instance-uptime.running::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #00e676;
+      box-shadow: 0 0 6px #00e676;
+      animation: pulse 1.8s infinite;
+    }
+    .instance-uptime.stopped { color: #887d96; }
+    .instance-uptime.crashed { color: #ff4766; }
+
+    .instance-card-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .btn-card-stop {
+      width: 24px;
+      height: 24px;
+      border-radius: 5px;
+      border: 1px solid rgba(255, 71, 102, 0.3);
+      background: rgba(255, 71, 102, 0.12);
+      color: #ff4766;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+      transition: all .15s ease;
+    }
+    .btn-card-stop:hover {
+      background: #ff4766;
+      color: #fff;
+      box-shadow: 0 0 8px rgba(255, 71, 102, 0.4);
+    }
+    .btn-card-stop svg { width: 11px; height: 11px; }
+
+    .btn-card-close {
+      width: 22px;
+      height: 22px;
+      border-radius: 5px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: #7b6f8b;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+      transition: all .15s ease;
+    }
+    .btn-card-close:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .btn-card-close svg { width: 11px; height: 11px; }
+
+    .no-instances-notice {
+      padding: 30px 14px;
+      text-align: center;
+      color: #635773;
+      font-size: 11px;
+    }
+
+    /* Sidebar Footer */
+    .sidebar-footer {
+      padding: 12px 14px;
+      border-top: 1px solid var(--surface-border);
+      background: #14111d;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .sidebar-actions-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-sidebar-stopp {
+      flex: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 71, 102, 0.4);
+      background: linear-gradient(135deg, rgba(255, 71, 102, 0.25), rgba(210, 30, 60, 0.35));
+      color: #ff5272;
+      font-weight: 700;
+      font-size: 11px;
+      letter-spacing: 0.8px;
+      cursor: pointer;
+      transition: all .16s ease;
+    }
+    .btn-sidebar-stopp:hover:not(:disabled) {
+      background: #ff3355;
+      color: #ffffff;
+      box-shadow: 0 4px 14px rgba(255, 51, 85, 0.45);
+      transform: translateY(-1px);
+    }
+    .btn-sidebar-stopp:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      border-color: rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.04);
+      color: #837693;
+    }
+    .btn-sidebar-stopp svg { width: 12px; height: 12px; }
+
+    .sidebar-summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      color: #8c7e9d;
+      text-transform: uppercase;
+    }
+    .sidebar-summary .running-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: #4ce68f;
+    }
+    .sidebar-summary .running-tag::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #00e676;
+    }
+
     @keyframes pulse {
       0%, 100% { opacity: 1; transform: scale(1); }
       50% { opacity: 0.5; transform: scale(1.2); }
@@ -259,7 +539,7 @@
   <div class="titlebar">
     <div class="title-left">
       <div class="title-icon"></div>
-      <span>CAESER CLIENT · SPIELPROTOKOLL</span>
+      <span id="titlebar-heading">CAESER CLIENT · SPIELPROTOKOLL</span>
     </div>
     <div class="title-actions">
       <button class="win-btn" id="win-min" aria-label="Minimieren">−</button>
@@ -268,37 +548,165 @@
     </div>
   </div>
 
-  <div class="toolbar">
-    <div class="status-badge" id="status-badge">
-      <span class="status-dot"></span>
-      <span id="status-text">Warte auf Spielstart …</span>
-    </div>
-    <div class="profile-badge">Profil: <strong id="profile-name">Caeser</strong></div>
+  <div class="app-body">
+    <div class="main-panel">
+      <div class="toolbar">
+        <div class="status-badge" id="status-badge">
+          <span class="status-dot"></span>
+          <span id="status-text">Warte auf Spielstart …</span>
+        </div>
+        <div class="profile-badge"><span id="lbl-profile">Profil:</span> <strong id="profile-name">Caeser</strong></div>
 
-    <div class="search-box">
-      <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-      <input type="text" id="search-input" class="search-input" placeholder="Im Log suchen …" spellcheck="false">
+        <div class="search-box">
+          <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input type="text" id="search-input" class="search-input" placeholder="Im Log suchen …" spellcheck="false">
+        </div>
+
+        <div class="tool-actions">
+          <button class="btn active" id="btn-autoscroll" title="Automatisches Herunterscrollen">
+            <span>⬇ Auto-Scroll</span>
+          </button>
+          <button class="btn" id="btn-copy" title="Gesamtes Log in die Zwischenablage kopieren">
+            <span id="btn-copy-text">📋 Kopieren</span>
+          </button>
+          <button class="btn btn-danger" id="btn-clear" title="Log-Ansicht leeren">
+            <span id="btn-clear-text">🗑️ Leeren</span>
+          </button>
+          <span class="line-counter" id="line-counter">0 Zeilen</span>
+        </div>
+      </div>
+
+      <div class="terminal-container" id="terminal">
+        <div class="empty-notice" id="empty-notice">Noch keine Log-Einträge vorhanden. Starte Minecraft, um die Ausgaben live zu verfolgen.</div>
+      </div>
     </div>
 
-    <div class="tool-actions">
-      <button class="btn active" id="btn-autoscroll" title="Automatisches Herunterscrollen">
-        <span>⬇ Auto-Scroll</span>
-      </button>
-      <button class="btn" id="btn-copy" title="Gesamtes Log in die Zwischenablage kopieren">
-        <span>📋 Kopieren</span>
-      </button>
-      <button class="btn btn-danger" id="btn-clear" title="Log-Ansicht leeren">
-        <span>🗑️ Leeren</span>
-      </button>
-      <span class="line-counter" id="line-counter">0 Zeilen</span>
-    </div>
-  </div>
+    <!-- Instances Sidebar -->
+    <aside class="instances-sidebar" id="instances-sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-title-group">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+          </svg>
+          <span id="sidebar-title-text">Instanzen</span>
+        </div>
+        <span class="instances-count-badge" id="instances-count-badge">0</span>
+      </div>
 
-  <div class="terminal-container" id="terminal">
-    <div class="empty-notice" id="empty-notice">Noch keine Log-Einträge vorhanden. Starte Minecraft, um die Ausgaben live zu verfolgen.</div>
+      <div class="instances-list" id="instances-list">
+        <div class="no-instances-notice" id="no-instances-notice">Keine aktiven Instanzen vorhanden.</div>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-actions-row">
+          <button class="btn-sidebar-stopp" id="btn-sidebar-stopp" disabled title="Dieses Minecraft-Spiel beenden">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <rect x="5" y="5" width="14" height="14" rx="2"></rect>
+            </svg>
+            <span id="btn-sidebar-stopp-text">STOPP</span>
+          </button>
+        </div>
+        <div class="sidebar-summary">
+          <span id="sidebar-summary-name">-</span>
+          <span class="running-tag" id="sidebar-summary-running">0 LÄUFT</span>
+        </div>
+      </div>
+    </aside>
   </div>
 
   <script>
+    // i18n Dictionary
+    const i18n = {
+      de: {
+        title: 'CAESER CLIENT · SPIELPROTOKOLL',
+        profilePrefix: 'Profil:',
+        searchPlaceholder: 'Im Log suchen …',
+        autoScroll: '⬇ Auto-Scroll',
+        autoScrollTitle: 'Automatisches Herunterscrollen',
+        copy: '📋 Kopieren',
+        copyTitle: 'Gesamtes Log in die Zwischenablage kopieren',
+        copied: '✓ Kopiert!',
+        clear: '🗑️ Leeren',
+        clearTitle: 'Log-Ansicht leeren',
+        lines: 'Zeilen',
+        emptyNoLogs: 'Noch keine Log-Einträge vorhanden. Starte Minecraft, um die Ausgaben live zu verfolgen.',
+        emptyNoMatches: (q) => `Keine Treffer für "${q}" gefunden.`,
+        statusWaiting: 'Warte auf Spielstart …',
+        statusRunning: 'Minecraft läuft',
+        statusStarting: 'Startet …',
+        statusStopped: (code) => code !== undefined && code !== null ? `Beendet (Code ${code})` : 'Beendet',
+        statusCrashed: (code) => `Absturz (Exit Code ${code ?? 1})`,
+        instancesTitle: 'Instanzen',
+        noInstancesNotice: 'Keine aktiven Instanzen vorhanden.',
+        stopBtn: 'STOPP',
+        stopTitle: 'Dieses Minecraft-Spiel beenden',
+        runningSummary: (count) => `${count} LÄUFT`
+      },
+      en: {
+        title: 'CAESER CLIENT · GAME LOGS',
+        profilePrefix: 'Profile:',
+        searchPlaceholder: 'Search in logs …',
+        autoScroll: '⬇ Auto-Scroll',
+        autoScrollTitle: 'Automatic scrolling',
+        copy: '📋 Copy',
+        copyTitle: 'Copy entire log to clipboard',
+        copied: '✓ Copied!',
+        clear: '🗑️ Clear',
+        clearTitle: 'Clear log view',
+        lines: 'lines',
+        emptyNoLogs: 'No log entries yet. Launch Minecraft to see live output.',
+        emptyNoMatches: (q) => `No matches found for "${q}".`,
+        statusWaiting: 'Waiting for game launch …',
+        statusRunning: 'Minecraft running',
+        statusStarting: 'Starting …',
+        statusStopped: (code) => code !== undefined && code !== null ? `Exited (Code ${code})` : 'Exited',
+        statusCrashed: (code) => `Crashed (Exit Code ${code ?? 1})`,
+        instancesTitle: 'Instances',
+        noInstancesNotice: 'No active instances available.',
+        stopBtn: 'STOP',
+        stopTitle: 'Terminate this Minecraft game',
+        runningSummary: (count) => `${count} RUNNING`
+      }
+    };
+
+    let currentLang = 'de';
+    function t(key, arg) {
+      const dict = i18n[currentLang] || i18n.de;
+      const val = dict[key];
+      if (typeof val === 'function') return val(arg);
+      return val || (i18n.de[key] ? (typeof i18n.de[key] === 'function' ? i18n.de[key](arg) : i18n.de[key]) : key);
+    }
+
+    function applyLanguage(lang) {
+      currentLang = (lang === 'en') ? 'en' : 'de';
+      document.documentElement.lang = currentLang;
+      document.getElementById('titlebar-heading').textContent = t('title');
+      document.getElementById('lbl-profile').textContent = t('profilePrefix');
+      document.getElementById('search-input').placeholder = t('searchPlaceholder');
+      document.getElementById('btn-autoscroll').title = t('autoScrollTitle');
+      document.getElementById('btn-autoscroll').querySelector('span').textContent = t('autoScroll');
+      document.getElementById('btn-copy').title = t('copyTitle');
+      document.getElementById('btn-copy-text').textContent = t('copy');
+      document.getElementById('btn-clear').title = t('clearTitle');
+      document.getElementById('btn-clear-text').textContent = t('clear');
+      document.getElementById('sidebar-title-text').textContent = t('instancesTitle');
+      document.getElementById('no-instances-notice').textContent = t('noInstancesNotice');
+      document.getElementById('btn-sidebar-stopp-text').textContent = t('stopBtn');
+      document.getElementById('btn-sidebar-stopp').title = t('stopTitle');
+
+      // Update active view
+      const active = instances.find(i => i.id === activeInstanceId);
+      if (active) {
+        updateStatus(active.status, { code: active.exitCode });
+      } else {
+        updateStatus('waiting');
+      }
+      renderInstancesList();
+      renderLines();
+    }
+
     const term = document.getElementById('terminal');
     const statusBadge = document.getElementById('status-badge');
     const statusText = document.getElementById('status-text');
@@ -308,11 +716,17 @@
     const btnAutoscroll = document.getElementById('btn-autoscroll');
     const btnCopy = document.getElementById('btn-copy');
     const btnClear = document.getElementById('btn-clear');
-    const emptyNotice = document.getElementById('empty-notice');
+    const instancesListEl = document.getElementById('instances-list');
+    const instancesCountBadge = document.getElementById('instances-count-badge');
+    const btnSidebarStopp = document.getElementById('btn-sidebar-stopp');
+    const sidebarSummaryName = document.getElementById('sidebar-summary-name');
+    const sidebarSummaryRunning = document.getElementById('sidebar-summary-running');
 
     let allLines = [];
     let autoscroll = true;
     let filterQuery = '';
+    let instances = [];
+    let activeInstanceId = null;
 
     // Window controls
     document.getElementById('win-min').onclick = () => window.logApi?.action('minimize');
@@ -333,8 +747,8 @@
         : allLines;
 
       if (!visible.length) {
-        term.innerHTML = `<div class="empty-notice">${filterQuery ? 'Keine Treffer für "' + filterQuery + '" gefunden.' : 'Noch keine Log-Einträge vorhanden.'}</div>`;
-        lineCounter.textContent = `${allLines.length} Zeilen`;
+        term.innerHTML = `<div class="empty-notice">${filterQuery ? t('emptyNoMatches', filterQuery) : t('emptyNoLogs')}</div>`;
+        lineCounter.textContent = `${allLines.length} ${t('lines')}`;
         return;
       }
 
@@ -358,7 +772,7 @@
       });
 
       term.appendChild(fragment);
-      lineCounter.textContent = `${allLines.length} Zeilen`;
+      lineCounter.textContent = `${allLines.length} ${t('lines')}`;
       if (autoscroll) term.scrollTop = term.scrollHeight;
     }
 
@@ -408,21 +822,162 @@
 
         if (autoscroll) term.scrollTop = term.scrollHeight;
       }
-      lineCounter.textContent = `${allLines.length} Zeilen`;
+      lineCounter.textContent = `${allLines.length} ${t('lines')}`;
     }
 
     function updateStatus(state, info) {
-      statusBadge.className = 'status-badge ' + state;
+      statusBadge.className = 'status-badge ' + (state || 'stopped');
       if (state === 'running') {
-        statusText.textContent = 'Minecraft läuft';
+        statusText.textContent = t('statusRunning');
       } else if (state === 'starting') {
-        statusText.textContent = 'Startet …';
+        statusText.textContent = t('statusStarting');
       } else if (state === 'stopped') {
-        statusText.textContent = info ? `Beendet (Code ${info.code})` : 'Beendet';
+        statusText.textContent = t('statusStopped', info?.code);
       } else if (state === 'crashed') {
-        statusText.textContent = `Absturz (Exit Code ${info?.code ?? 1})`;
+        statusText.textContent = t('statusCrashed', info?.code);
+      } else {
+        statusText.textContent = t('statusWaiting');
       }
     }
+
+    function formatDuration(startMs, endMs) {
+      const end = endMs || Date.now();
+      const diff = Math.max(0, Math.floor((end - startMs) / 1000));
+      const m = Math.floor(diff / 60);
+      const s = diff % 60;
+      if (m >= 60) {
+        const h = Math.floor(m / 60);
+        const remM = m % 60;
+        return `${h}:${String(remM).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      }
+      return `${m}:${String(s).padStart(2, '0')}`;
+    }
+
+    function renderInstancesList() {
+      instancesListEl.innerHTML = '';
+      instancesCountBadge.textContent = instances.length;
+
+      const runningCount = instances.filter(i => i.status === 'running').length;
+      sidebarSummaryRunning.textContent = t('runningSummary', runningCount);
+
+      if (!instances.length) {
+        const notice = document.createElement('div');
+        notice.className = 'no-instances-notice';
+        notice.textContent = t('noInstancesNotice');
+        instancesListEl.appendChild(notice);
+        sidebarSummaryName.textContent = '-';
+        btnSidebarStopp.disabled = true;
+        return;
+      }
+
+      const activeInst = instances.find(i => i.id === activeInstanceId) || instances[0];
+      if (activeInst) {
+        sidebarSummaryName.textContent = activeInst.profileName;
+        btnSidebarStopp.disabled = activeInst.status !== 'running';
+      }
+
+      instances.forEach(inst => {
+        const card = document.createElement('div');
+        card.className = 'instance-card' + (inst.id === activeInstanceId ? ' active' : '');
+        card.onclick = () => selectInstance(inst.id);
+
+        const iconBox = document.createElement('div');
+        iconBox.className = 'instance-icon';
+        iconBox.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>`;
+
+        const info = document.createElement('div');
+        info.className = 'instance-info';
+
+        const title = document.createElement('div');
+        title.className = 'instance-title';
+        title.textContent = inst.profileName;
+
+        const sub = document.createElement('div');
+        sub.className = 'instance-sub';
+
+        const userSpan = document.createElement('span');
+        userSpan.textContent = inst.accountName || 'Player';
+
+        const dot = document.createElement('span');
+        dot.textContent = '·';
+
+        const uptime = document.createElement('span');
+        uptime.className = `instance-uptime ${inst.status || 'stopped'}`;
+        uptime.dataset.start = inst.startTime;
+        uptime.dataset.end = inst.endTime || '';
+        uptime.dataset.status = inst.status;
+        uptime.textContent = inst.status === 'running'
+          ? formatDuration(inst.startTime, null)
+          : (inst.status === 'crashed' ? t('statusCrashed', inst.exitCode) : t('statusStopped', inst.exitCode));
+
+        sub.appendChild(userSpan);
+        sub.appendChild(dot);
+        sub.appendChild(uptime);
+
+        info.appendChild(title);
+        info.appendChild(sub);
+
+        const actions = document.createElement('div');
+        actions.className = 'instance-card-actions';
+
+        if (inst.status === 'running') {
+          const stopBtn = document.createElement('button');
+          stopBtn.className = 'btn-card-stop';
+          stopBtn.title = t('stopTitle');
+          stopBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"></rect></svg>`;
+          stopBtn.onclick = (e) => {
+            e.stopPropagation();
+            window.logApi?.stopInstance(inst.id);
+          };
+          actions.appendChild(stopBtn);
+        } else {
+          const closeBtn = document.createElement('button');
+          closeBtn.className = 'btn-card-close';
+          closeBtn.title = 'Entfernen';
+          closeBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+          closeBtn.onclick = (e) => {
+            e.stopPropagation();
+            window.logApi?.closeInstance(inst.id);
+          };
+          actions.appendChild(closeBtn);
+        }
+
+        card.appendChild(iconBox);
+        card.appendChild(info);
+        card.appendChild(actions);
+        instancesListEl.appendChild(card);
+      });
+    }
+
+    async function selectInstance(instanceId) {
+      if (activeInstanceId === instanceId) return;
+      activeInstanceId = instanceId;
+      const res = await window.logApi?.selectInstance(instanceId);
+      if (res) {
+        profileNameEl.textContent = res.profileName || 'Caeser';
+        updateStatus(res.status, { code: res.exitCode });
+        allLines = Array.isArray(res.logs) ? [...res.logs] : [];
+        renderLines();
+      }
+      renderInstancesList();
+    }
+
+    // Stop selected instance button in sidebar footer
+    btnSidebarStopp.onclick = () => {
+      if (activeInstanceId) {
+        window.logApi?.stopInstance(activeInstanceId);
+      }
+    };
+
+    // Live uptime ticker every 1 second
+    setInterval(() => {
+      document.querySelectorAll('.instance-uptime.running').forEach(el => {
+        const start = Number(el.dataset.start);
+        if (start) {
+          el.textContent = formatDuration(start, null);
+        }
+      });
+    }, 1000);
 
     // Autoscroll toggle
     btnAutoscroll.onclick = () => {
@@ -433,7 +988,6 @@
 
     term.addEventListener('wheel', (e) => {
       if (e.deltaY < 0 && autoscroll) {
-        // user scrolled up
         autoscroll = false;
         btnAutoscroll.classList.remove('active');
       }
@@ -451,16 +1005,21 @@
       } catch (e) {
         console.error('Clipboard copy error:', e);
       }
-      const origText = btnCopy.querySelector('span').textContent;
-      btnCopy.querySelector('span').textContent = '✓ Kopiert!';
-      setTimeout(() => { btnCopy.querySelector('span').textContent = origText; }, 1800);
+      const copySpan = document.getElementById('btn-copy-text');
+      const origText = copySpan.textContent;
+      copySpan.textContent = t('copied');
+      setTimeout(() => { copySpan.textContent = origText; }, 1800);
     };
 
     // Clear
     btnClear.onclick = () => {
       allLines = [];
       renderLines();
-      if (window.logApi?.clear) window.logApi.clear();
+      if (activeInstanceId) {
+        window.logApi?.clearInstance(activeInstanceId);
+      } else if (window.logApi?.clear) {
+        window.logApi.clear();
+      }
     };
 
     // Search filter
@@ -473,39 +1032,102 @@
     if (window.logApi) {
       window.logApi.getInitialData().then(init => {
         if (!init) return;
-        if (init.profileName) profileNameEl.textContent = init.profileName;
-        if (init.running) updateStatus('running');
+        if (init.language) applyLanguage(init.language);
+        if (Array.isArray(init.instances)) {
+          instances = init.instances;
+        }
+        if (init.activeInstanceId) {
+          activeInstanceId = init.activeInstanceId;
+        } else if (instances.length) {
+          activeInstanceId = instances[0].id;
+        }
+
+        const active = instances.find(i => i.id === activeInstanceId);
+        if (active) {
+          profileNameEl.textContent = active.profileName;
+          updateStatus(active.status, { code: active.exitCode });
+        } else if (init.profileName) {
+          profileNameEl.textContent = init.profileName;
+          updateStatus(init.running ? 'running' : 'stopped');
+        }
+
         if (Array.isArray(init.logs)) {
           allLines = [...init.logs];
-          renderLines();
         }
-      });
-
-      window.logApi.on('init-logs', ({ logs, profileName, running }) => {
-        if (profileName) profileNameEl.textContent = profileName;
-        updateStatus(running ? 'running' : 'stopped');
-        if (Array.isArray(logs)) {
-          allLines = [...logs];
-          renderLines();
-        }
-      });
-
-      window.logApi.on('game-spawn', ({ profileName }) => {
-        if (profileName) profileNameEl.textContent = profileName;
-        updateStatus('running');
-      });
-
-      window.logApi.on('game-log', line => {
-        addLine(line);
-      });
-
-      window.logApi.on('game-exit', ({ code }) => {
-        updateStatus(code === 0 ? 'stopped' : 'crashed', { code });
-      });
-
-      window.logApi.on('clear-logs', () => {
-        allLines = [];
+        renderInstancesList();
         renderLines();
+      });
+
+      window.logApi.on('init-logs', (payload) => {
+        if (payload?.language) applyLanguage(payload.language);
+        if (Array.isArray(payload?.instances)) {
+          instances = payload.instances;
+        }
+        if (payload?.activeInstanceId) {
+          activeInstanceId = payload.activeInstanceId;
+        }
+        const active = instances.find(i => i.id === activeInstanceId);
+        if (active) {
+          profileNameEl.textContent = active.profileName;
+          updateStatus(active.status, { code: active.exitCode });
+        }
+        if (Array.isArray(payload?.logs)) {
+          allLines = [...payload.logs];
+        }
+        renderInstancesList();
+        renderLines();
+      });
+
+      window.logApi.on('instance-spawn', ({ instance, activeInstanceId: newActiveId }) => {
+        if (instance) {
+          const idx = instances.findIndex(i => i.id === instance.id);
+          if (idx !== -1) instances[idx] = instance;
+          else instances.push(instance);
+        }
+        if (newActiveId) {
+          activeInstanceId = newActiveId;
+        }
+        const active = instances.find(i => i.id === activeInstanceId);
+        if (active) {
+          profileNameEl.textContent = active.profileName;
+          updateStatus('running');
+          allLines = [];
+        }
+        renderInstancesList();
+        renderLines();
+      });
+
+      window.logApi.on('game-log', ({ instanceId, line }) => {
+        if (!instanceId || instanceId === activeInstanceId) {
+          addLine(line);
+        }
+      });
+
+      window.logApi.on('instance-exit', ({ instanceId, code, runningCount }) => {
+        const idx = instances.findIndex(i => i.id === instanceId);
+        if (idx !== -1) {
+          instances.splice(idx, 1);
+        }
+        if (!instances.length || runningCount <= 0) {
+          window.logApi?.action('close');
+          return;
+        }
+        if (instanceId === activeInstanceId) {
+          selectInstance(instances[0].id);
+        } else {
+          renderInstancesList();
+        }
+      });
+
+      window.logApi.on('language-change', (newLang) => {
+        applyLanguage(newLang);
+      });
+
+      window.logApi.on('clear-logs', ({ instanceId }) => {
+        if (!instanceId || instanceId === activeInstanceId) {
+          allLines = [];
+          renderLines();
+        }
       });
     }
   </script>
