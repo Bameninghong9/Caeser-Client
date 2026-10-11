@@ -88,3 +88,45 @@ test('Mit dem Konto-Skin wird beim Start nichts hochgeladen', async t => {
   await launch();
   assert.equal(uploads.length, 0);
 });
+
+test('syncSkinForAccount lädt für ein nicht aktives Konto hoch, zweiter Aufruf ist unchanged ohne Netzwerk', async t => {
+  const { controller, uploads } = await setup(t);
+  controller.accounts.push({ id: 'acc-2', name: 'Zweit', accessToken: 'token-2', refreshToken: 'refresh-2' });
+  const state = await controller.addSkin({ name: 'A', data: SKIN_A });
+  const skinId = state.skins[0].id;
+  uploads.length = 0; // addSkin selbst kann für das aktive Konto hochladen
+  assert.deepEqual(await controller.syncSkinForAccount('acc-2'), { status: 'uploaded', skinId });
+  assert.equal(skinPosts(uploads).length, 1);
+  assert.equal(controller.settings.skinUploads['acc-2'].skinId, skinId);
+  assert.equal(controller.settings.activeAccount, 'acc-1');
+  assert.deepEqual(await controller.syncSkinForAccount('acc-2'), { status: 'unchanged', skinId });
+  assert.equal(uploads.length, 1);
+});
+
+test('syncSkinForAccount mit Konto-Skin liefert skipped', async t => {
+  const { controller, uploads } = await setup(t);
+  controller.settings.activeSkinId = 'account';
+  assert.deepEqual(await controller.syncSkinForAccount('acc-1'), { status: 'skipped' });
+  assert.equal(uploads.length, 0);
+});
+
+test('Zwei gleichzeitige syncSkinForAccount-Aufrufe für dasselbe Konto führen zu genau einem Upload', async t => {
+  const { controller, uploads } = await setup(t);
+  controller.accounts.push({ id: 'acc-2', name: 'Zweit', accessToken: 'token-2', refreshToken: 'refresh-2' });
+  await controller.addSkin({ name: 'A', data: SKIN_A });
+  uploads.length = 0;
+  const [a, b] = await Promise.all([controller.syncSkinForAccount('acc-2'), controller.syncSkinForAccount('acc-2')]);
+  assert.equal(a.status, 'uploaded'); assert.deepEqual(a, b);
+  assert.equal(skinPosts(uploads).length, 1);
+});
+
+test('syncSkinForAccount: Fehler liefert failed mit Meldung ohne Tokens', async t => {
+  const { controller } = await setup(t);
+  controller.accounts.push({ id: 'acc-2', name: 'Zweit', accessToken: 'geheim-AAA111', refreshToken: 'geheim-BBB222' });
+  await controller.addSkin({ name: 'A', data: SKIN_A });
+  globalThis.fetch = async () => new Response(JSON.stringify({ errorMessage: 'kaputt geheim-AAA111 geheim-BBB222' }), { status: 500 });
+  const result = await controller.syncSkinForAccount('acc-2');
+  assert.equal(result.status, 'failed'); assert.match(result.error, /kaputt/);
+  assert.ok(!result.error.includes('geheim-'));
+  assert.equal(controller.settings.skinUploads?.['acc-2'], undefined);
+});

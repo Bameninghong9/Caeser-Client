@@ -118,7 +118,8 @@ test('switch erneuert das Konto, gibt kein refreshToken zurück und setzt settin
   auth.refresh = async acc => { refreshed.push(acc.id); return { ...acc, accessToken: 'neues-access-token-geheim', refreshToken: 'neues-refresh-token-geheim', expiresAt: 1234567890000 }; };
   const res = await request(`${url}/v1/accounts/switch`, { method: 'POST', token, body: { id: ID_B } });
   assert.equal(res.status, 200);
-  assert.deepEqual(res.body, { id: ID_B, name: 'Beta', accessToken: 'neues-access-token-geheim', xuid: 'xuid-2', clientId: '00000000402b5328', expiresAt: 1234567890000 });
+  assert.deepEqual(res.body, { id: ID_B, name: 'Beta', accessToken: 'neues-access-token-geheim', xuid: 'xuid-2', clientId: '00000000402b5328', expiresAt: 1234567890000,
+    skinSync: { status: 'skipped' } });
   assert.ok(!res.raw.includes('refresh'));
   assert.deepEqual(refreshed, [ID_B]);
   assert.equal(controller.settings.activeAccount, ID_B);
@@ -129,6 +130,58 @@ test('switch erneuert das Konto, gibt kein refreshToken zurück und setzt settin
   assert.deepEqual(list.body.accounts.map(a => a.active), [false, true]);
   // Drosselung: höchstens ein Wechsel pro Sekunde und Instanz
   assert.equal((await request(`${url}/v1/accounts/switch`, { method: 'POST', token, body: { id: ID_A } })).status, 429);
+});
+
+const SKIN = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAT0lEQVR42u3BAQEAAACAkP6v7ggKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOA1wEAAAe352X0AAAAASUVORK5CYII=';
+// Skin wählen und Mojang-API mocken; addSkin kann dabei schon für das aktive Konto hochladen.
+async function withSkin(t, controller, fetchImpl) {
+  const original = globalThis.fetch;
+  t.after(() => { globalThis.fetch = original; });
+  globalThis.fetch = async () => new Response(JSON.stringify({ skins: [{ state: 'ACTIVE', url: 'https://textures.minecraft.net/texture/x' }] }), { status: 200 });
+  auth.refresh = async acc => acc;
+  const state = await controller.addSkin({ name: 'A', data: SKIN });
+  globalThis.fetch = fetchImpl;
+  return state.skins[0].id;
+}
+const skinOk = async () => new Response(JSON.stringify({ skins: [{ state: 'ACTIVE', url: 'https://textures.minecraft.net/texture/y' }] }), { status: 200 });
+
+test('switch lädt den Launcher-Skin auf das neue Konto hoch (skinSync uploaded), ohne refreshToken', async t => {
+  const { url, token, controller } = await started(t);
+  const posts = [];
+  const skinId = await withSkin(t, controller, async (u, o = {}) => { posts.push(String(u)); return skinOk(); });
+  const res = await request(`${url}/v1/accounts/switch`, { method: 'POST', token, body: { id: ID_B } });
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body.skinSync, { status: 'uploaded', skinId });
+  assert.equal(posts.filter(u => u.endsWith('/minecraft/profile/skins')).length, 1);
+  assert.equal(controller.settings.skinUploads[ID_B].skinId, skinId);
+  assert.equal(res.body.accessToken, 'access-token-2-geheim');
+  assert.ok(!res.raw.includes('refresh'));
+});
+
+test('switch: fehlgeschlagener Skin-Upload liefert 200 mit skinSync failed, Konto ist gewechselt', async t => {
+  const { url, token, controller } = await started(t);
+  const skinId = await withSkin(t, controller, async () => new Response(JSON.stringify({ errorMessage: 'kaputt refresh-token-2-geheim' }), { status: 500 }));
+  const res = await request(`${url}/v1/accounts/switch`, { method: 'POST', token, body: { id: ID_B } });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.skinSync.status, 'failed'); assert.equal(res.body.skinSync.skinId, skinId);
+  assert.match(res.body.skinSync.error, /kaputt/);
+  assert.ok(!res.raw.includes('refresh'));
+  assert.equal(controller.settings.activeAccount, ID_B);
+  assert.equal((await request(`${url}/v1/accounts`, { token })).body.accounts.find(a => a.active).id, ID_B);
+});
+
+test('switch: hängender Skin-Upload liefert nach dem Timeout pending, ein späterer Fehler wird als Hinweis gemeldet', async t => {
+  const { url, token, controller, bridge, events } = await started(t);
+  bridge.skinSyncTimeout = 50;
+  let fail;
+  const skinId = await withSkin(t, controller, () => new Promise((resolve, reject) => { fail = reject; }));
+  const res = await request(`${url}/v1/accounts/switch`, { method: 'POST', token, body: { id: ID_B } });
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body.skinSync, { status: 'pending', skinId });
+  assert.equal(controller.settings.activeAccount, ID_B);
+  assert.ok(!res.raw.includes('refresh'));
+  fail(new TypeError('fetch failed'));
+  await waitFor(() => events.includes('notice'));
 });
 
 test('switch: fehlgeschlagene Erneuerung liefert 502 ohne Tokens', async t => {

@@ -8,6 +8,8 @@ const auth = require('../auth/microsoft.cjs');
 const HOST = '127.0.0.1';
 const MAX_BODY = 4096;
 const SWITCH_INTERVAL = 1000;
+// Mod-Timeout 10 s: Token-Erneuerung plus Skin-Sync müssen darunter bleiben.
+const SKIN_SYNC_TIMEOUT = 6000;
 const ROUTES = { '/v1/accounts': 'GET', '/v1/accounts/switch': 'POST', '/v1/accounts/login': 'POST' };
 
 // Ersetzt alle bekannten Geheimnisse; leere Werte würden sonst jede Stelle des Texts treffen.
@@ -26,9 +28,14 @@ function playerMessage(error, fallback, secrets) {
   return text && text.length <= 300 ? text : fallback;
 }
 
+// skinId und error nur mitsenden, wenn gesetzt.
+function skinSyncBody({ status, skinId, error }) {
+  return { status, ...(skinId ? { skinId } : {}), ...(error ? { error } : {}) };
+}
+
 class AccountBridge {
-  constructor(controller, { log = console } = {}) {
-    this.controller = controller; this.log = log;
+  constructor(controller, { log = console, skinSyncTimeout = SKIN_SYNC_TIMEOUT } = {}) {
+    this.controller = controller; this.log = log; this.skinSyncTimeout = skinSyncTimeout;
     this.tokens = new Map(); // token -> { instanceId, accountId, lastSwitch }
     this.server = null; this.port = 0; this.listening = null; this.closing = null;
     this.loginRunning = false; this.loginError = null; this.lastAddedId = null;
@@ -150,8 +157,31 @@ class AccountBridge {
     entry.accountId = account.id;
     this.controller.settings.activeAccount = account.id; await this.controller.saveSettings();
     this.controller.emit('accounts-changed');
-    return this.send(res, 200, { id: account.id, name: account.name, accessToken: account.accessToken, xuid: account.xuid || null,
-      clientId: account.clientId || null, expiresAt: Number.isFinite(account.expiresAt) ? account.expiresAt : null });
+    const skinSync = await this.syncSkin(account.id);
+    // Der Skin-Upload kann das Konto erneut erneuern und speichern: Token frisch lesen.
+    const current = this.controller.accounts.find(a => a.id === account.id) || account;
+    return this.send(res, 200, { id: current.id, name: current.name, accessToken: current.accessToken, xuid: current.xuid || null,
+      clientId: current.clientId || null, expiresAt: Number.isFinite(current.expiresAt) ? current.expiresAt : null, skinSync });
+  }
+  // Skin vor dem ersten Server-Beitritt übertragen, aber höchstens skinSyncTimeout warten.
+  // Ein Fehler verhindert den Wechsel nie; ein verspäteter Fehler geht als Hinweis an die Launcher-UI.
+  async syncSkin(accountId) {
+    const skinId = this.controller.settings.activeSkinId || undefined;
+    const sync = Promise.resolve().then(() => this.controller.syncSkinForAccount(accountId)).catch(error => {
+      this.warn('Skin-Sync fehlgeschlagen', error);
+      return { status: 'failed', skinId, error: 'Der Skin konnte nicht auf das Minecraft-Konto übertragen werden.' };
+    });
+    let timer;
+    const timeout = new Promise(resolve => { timer = setTimeout(resolve, this.skinSyncTimeout, null); });
+    const result = await Promise.race([sync, timeout]);
+    clearTimeout(timer);
+    if (!result) {
+      sync.then(late => {
+        if (late.status === 'failed') this.controller.emit('notice', `Skin konnte nicht auf das Minecraft-Konto übertragen werden: ${late.error}`);
+      });
+      return skinSyncBody({ status: 'pending', skinId });
+    }
+    return skinSyncBody(result);
   }
   // Startet die Anmeldung im Hintergrund; die Mod fragt danach GET /v1/accounts ab.
   login(res) {

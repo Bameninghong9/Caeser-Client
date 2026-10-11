@@ -44,6 +44,7 @@ class Controller {
     this.screenshotIndex = new Map(); this.screenshotSalt = crypto.randomBytes(32);
     this.discordRpc = new DiscordRpcClient();
     this.bridge = new AccountBridge(this); // Ingame-Account-Switcher, läuft nur solange eine Instanz läuft
+    this.skinSyncs = new Map(); // accountId -> laufender Skin-Sync
     this.mods = new Mods({root:this.root, profiles:this.profiles, curseforgeAccess:()=>this.curseforgeAccess(),
       assertIdle:()=>{if(this.busy) throw new Error('Ein Startvorgang läuft bereits.');},report:data=>this.emit('mod-progress',data)});
   }
@@ -188,16 +189,31 @@ class Controller {
   }
   // Beim Spielstart nur hochladen, wenn sich der Stand für dieses Konto geändert hat. Fehler blockieren den Start nicht.
   async syncSkinOnLaunch() {
-    const id = this.settings.activeSkinId;
-    if (!id || id === 'account') return;
-    const wanted = this.skinUploadState(id);
-    const last = this.settings.skinUploads?.[this.settings.activeAccount];
-    if (wanted && last && last.skinId === wanted.skinId && last.variant === wanted.variant && last.hash === wanted.hash) return;
-    const result = await this.uploadSkinToAccount(id).catch(error => ({ ok: false, error: error.message }));
-    if (!result?.ok) this.emit('notice', `Skin konnte nicht auf das Minecraft-Konto übertragen werden: ${result?.error || 'Unbekannter Fehler'}`);
+    const result = await this.syncSkinForAccount(this.settings.activeAccount);
+    if (result.status === 'failed') this.emit('notice', `Skin konnte nicht auf das Minecraft-Konto übertragen werden: ${result.error}`);
   }
-  async uploadSkinToAccount(id, variant) {
-    let account = this.accounts.find(a => a.id === this.settings.activeAccount);
+  // Gewählten Launcher-Skin auf ein bestimmtes Konto übertragen (Spielstart, Ingame-Wechsel über die Account-Brücke).
+  // Läuft für dieses Konto schon ein Sync, wird dasselbe Promise zurückgegeben.
+  syncSkinForAccount(accountId) {
+    const running = this.skinSyncs.get(accountId);
+    if (running) return running;
+    const promise = this.runSkinSync(accountId).finally(() => this.skinSyncs.delete(accountId));
+    this.skinSyncs.set(accountId, promise);
+    return promise;
+  }
+  async runSkinSync(accountId) {
+    const id = this.settings.activeSkinId;
+    if (!id || id === 'account') return { status: 'skipped' };
+    const wanted = this.skinUploadState(id);
+    const last = this.settings.skinUploads?.[accountId];
+    if (wanted && last && last.skinId === wanted.skinId && last.variant === wanted.variant && last.hash === wanted.hash) return { status: 'unchanged', skinId: id };
+    const result = await this.uploadSkinToAccount(id, undefined, accountId).catch(error => ({ ok: false, error: error.message }));
+    if (result?.ok) return { status: 'uploaded', skinId: id };
+    const secrets = this.accounts.flatMap(a => [a.accessToken, a.refreshToken]);
+    return { status: 'failed', skinId: id, error: redactSecrets(result?.error || 'Unbekannter Fehler', secrets) };
+  }
+  async uploadSkinToAccount(id, variant, accountId = this.settings.activeAccount) {
+    let account = this.accounts.find(a => a.id === accountId);
     if (!account) {
       return { ok: false, localOnly: true, error: 'Kein aktives Microsoft-Konto angemeldet. Der Skin ist nur lokal aktiv.' };
     }
