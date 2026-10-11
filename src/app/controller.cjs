@@ -7,7 +7,6 @@ const { Store } = require('../data/store.cjs');
 const { Profiles, instanceKey, validateProfile } = require('../data/profiles.cjs');
 const { json, inside } = require('../shared/net.cjs');
 const { Mods } = require('../mods/service.cjs');
-const { DEFAULT_CURSEFORGE_KEY } = require('../mods/providers.cjs');
 const { Session } = require('../game/session.cjs');
 const { DiscordRpcClient } = require('../shared/discord-rpc.cjs');
 const { createLogParser } = require('../game/log-parser.cjs');
@@ -37,7 +36,7 @@ class Controller {
     this.screenshotThumbsCache = new Map();
     this.screenshotIndex = new Map(); this.screenshotSalt = crypto.randomBytes(32);
     this.discordRpc = new DiscordRpcClient();
-    this.mods = new Mods({root:this.root, profiles:this.profiles, getKey:()=>this.secrets.curseforgeKey || process.env.CAESER_CURSEFORGE_KEY || DEFAULT_CURSEFORGE_KEY,
+    this.mods = new Mods({root:this.root, profiles:this.profiles, getKey:()=>this.secrets.curseforgeKey || process.env.CAESER_CURSEFORGE_KEY || '',
       assertIdle:()=>{if(this.busy) throw new Error('Ein Startvorgang läuft bereits.');},report:data=>this.emit('mod-progress',data)});
   }
   async load() {
@@ -70,7 +69,7 @@ class Controller {
   }
   state() { return { settings: this.settings, accounts: this.accounts.map(({ id, name }) => ({ id, name })), profiles: this.profiles.data.profiles,
     activeProfileId: this.profiles.data.activeId, maxMemoryMb: this.maxMemoryMb, root: this.root, busy: this.busy, running: !!this.game, appVersion: this.appVersion,
-    curseforgeConfigured: Boolean(this.secrets.curseforgeKey || process.env.CAESER_CURSEFORGE_KEY || DEFAULT_CURSEFORGE_KEY),
+    curseforgeConfigured: Boolean(this.secrets.curseforgeKey || process.env.CAESER_CURSEFORGE_KEY),
     skins: this.skins, activeSkinId: this.settings.activeSkinId || 'account',
     cosmetics: this.settings.cosmetics || DEFAULT_COSMETICS,
     wallpaper: this.wallpaper ? { name: this.wallpaper.name, type: this.wallpaper.type, opacity: this.settings.customWallpaper?.opacity ?? 40, blur: this.settings.customWallpaper?.blur ?? 0 } : null }; }

@@ -42,9 +42,8 @@ function curseVersion(v) {
     file: { name: v.fileName, url: v.downloadUrl, hash: hash?.value, algorithm: 'sha1' },
     dependencies: (v.dependencies || []).filter(d => d.relationType === 3).map(d => ({ projectId: String(d.modId) })) };
 }
-const DEFAULT_CURSEFORGE_KEY = '$2a$10$bL4bIL5pUWqfcO7KQtnMReakwtfHbNKh6v1uTpKlzhwoueEJQnPnm';
 class CurseForge {
-  constructor(key = DEFAULT_CURSEFORGE_KEY) { this.key = key; }
+  constructor(key = '') { this.key = key; }
   async request(route) {
     if (!this.key) throw new Error('CurseForge benötigt einen API-Schlüssel. Hinterlege ihn unter Einstellungen → Mod-Quellen.');
     try { return await json(`https://api.curseforge.com/v1${route}`, { headers: { 'x-api-key': this.key, Accept: 'application/json', 'User-Agent': USER_AGENT } }); }
@@ -81,4 +80,4 @@ class CurseForge {
     return selected;
   }
 }
-module.exports = { Modrinth, CurseForge, DEFAULT_CURSEFORGE_KEY, compatible, loaderFor, modrinthVersion, curseVersion };
+module.exports = { Modrinth, CurseForge, compatible, loaderFor, modrinthVersion, curseVersion };

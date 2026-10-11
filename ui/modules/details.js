@@ -290,7 +290,7 @@ async function search(append = false) {
   } catch (error) {
     if (request !== generation) return;
     const box = element('div', 'source-empty'); box.append(element('h3', '', currentLanguage === 'en' ? 'Source unavailable' : 'Quelle nicht verfügbar'), element('p', '', error.message));
-    if (selectedSource === 'curseforge') { const button = element('button', 'secondary', currentLanguage === 'en' ? 'Open mod sources' : 'Mod-Quellen öffnen'); button.onclick = () => { $('mods-drawer').close(); navigate('settings'); $('mod-settings').open = true; $('curseforge-key').focus(); }; box.append(button); }
+    if (selectedSource === 'curseforge') { const button = element('button', 'secondary', currentLanguage === 'en' ? 'Open mod sources' : 'Mod-Quellen öffnen'); button.onclick = () => { $('mods-drawer').close(); navigate('settings'); document.querySelector('[data-settings-category="general"]')?.click(); $('mod-settings')?.scrollIntoView({ block: 'center' }); $('curseforge-key')?.focus(); }; box.append(button); }
     $('mod-results').replaceChildren(box); $('mod-results-status').textContent = currentLanguage === 'en' ? 'Search failed' : 'Suche fehlgeschlagen';
   }
 }

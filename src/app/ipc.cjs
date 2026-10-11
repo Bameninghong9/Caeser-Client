@@ -99,7 +99,7 @@ function register(controller, win, pageURL, logManager) {
   handle('screenshot-rename', input => controller.renameScreenshot(input?.id, input?.newName));
   handle('screenshots-open-folder', () => controller.openScreenshotsFolder());
   handle('open', async target => {
-    const links = { approval: 'https://help.minecraft.net/hc/en-us/articles/16254801392141' };
+    const links = { 'curseforge-console': 'https://console.curseforge.com/', approval: 'https://help.minecraft.net/hc/en-us/articles/16254801392141' };
     if (target === 'folder') { await fs.mkdir(controller.root, { recursive: true }); const error = await shell.openPath(controller.root); if (error) throw new Error(error); }
     else if (links[target]) await shell.openExternal(links[target]); else throw new Error('Unbekanntes Ziel.');
   });

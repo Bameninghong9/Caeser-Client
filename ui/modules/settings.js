@@ -194,6 +194,11 @@ export function initSettings() {
     }
     document.querySelectorAll('.atmo-btn').forEach(b => b.classList.toggle('active', b.dataset.atmo === atmo));
 
+    // Mod-Quellen: Status des CurseForge-Schlüssels
+    const cfState = $('curseforge-state');
+    if (cfState) cfState.textContent = model.state.curseforgeConfigured ? t('curseforgeConfigured') : t('curseforgeMissing');
+    if ($('remove-curseforge')) $('remove-curseforge').disabled = !model.state.curseforgeConfigured;
+
     // Custom Wallpaper & Auto Log Switch & Discord RPC
     if (autoLogSwitch) autoLogSwitch.checked = settings.autoOpenLog !== false;
     if (discordRpcSwitch) discordRpcSwitch.checked = settings.discordRpc !== false;
@@ -281,6 +286,9 @@ export function initSettings() {
   $('java-auto').onclick = () => action(() => save({ javaPath: '' }));
   $('java-pick').onclick = () => action(async () => update(await api.pickJava()));
   $('open-folder').onclick = () => action(() => api.open('folder'));
+  if ($('open-curseforge-console')) {
+    $('open-curseforge-console').onclick = () => action(() => api.open('curseforge-console'));
+  }
   if ($('save-curseforge')) {
     $('save-curseforge').onclick = () => action(async () => {
       update(await api.setCurseForgeKey($('curseforge-key').value));
