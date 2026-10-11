@@ -569,6 +569,9 @@
           <button class="btn" id="btn-copy" title="Gesamtes Log in die Zwischenablage kopieren">
             <span id="btn-copy-text">📋 Kopieren</span>
           </button>
+          <button class="btn" id="btn-save" title="Log der gewählten Instanz als Textdatei speichern" disabled>
+            <span id="btn-save-text">💾 Speichern</span>
+          </button>
           <button class="btn btn-danger" id="btn-clear" title="Log-Ansicht leeren">
             <span id="btn-clear-text">🗑️ Leeren</span>
           </button>
@@ -637,7 +640,11 @@
         statusRunning: 'Minecraft läuft',
         statusStarting: 'Startet …',
         statusStopped: (code) => code !== undefined && code !== null ? `Beendet (Code ${code})` : 'Beendet',
-        statusCrashed: (code) => `Absturz (Exit Code ${code ?? 1})`,
+        statusCrashed: (code) => `Abgestürzt (Exit-Code ${code ?? 1})`,
+        save: '💾 Speichern',
+        saveTitle: 'Log der gewählten Instanz als Textdatei speichern',
+        saved: '✓ Gespeichert',
+        removeTitle: 'Aus der Liste entfernen',
         instancesTitle: 'Instanzen',
         noInstancesNotice: 'Keine aktiven Instanzen vorhanden.',
         stopBtn: 'STOPP',
@@ -662,7 +669,11 @@
         statusRunning: 'Minecraft running',
         statusStarting: 'Starting …',
         statusStopped: (code) => code !== undefined && code !== null ? `Exited (Code ${code})` : 'Exited',
-        statusCrashed: (code) => `Crashed (Exit Code ${code ?? 1})`,
+        statusCrashed: (code) => `Crashed (exit code ${code ?? 1})`,
+        save: '💾 Save',
+        saveTitle: 'Save the selected instance log as a text file',
+        saved: '✓ Saved',
+        removeTitle: 'Remove from list',
         instancesTitle: 'Instances',
         noInstancesNotice: 'No active instances available.',
         stopBtn: 'STOP',
@@ -689,6 +700,8 @@
       document.getElementById('btn-autoscroll').querySelector('span').textContent = t('autoScroll');
       document.getElementById('btn-copy').title = t('copyTitle');
       document.getElementById('btn-copy-text').textContent = t('copy');
+      document.getElementById('btn-save').title = t('saveTitle');
+      document.getElementById('btn-save-text').textContent = t('save');
       document.getElementById('btn-clear').title = t('clearTitle');
       document.getElementById('btn-clear-text').textContent = t('clear');
       document.getElementById('sidebar-title-text').textContent = t('instancesTitle');
@@ -716,6 +729,7 @@
     const btnAutoscroll = document.getElementById('btn-autoscroll');
     const btnCopy = document.getElementById('btn-copy');
     const btnClear = document.getElementById('btn-clear');
+    const btnSave = document.getElementById('btn-save');
     const instancesListEl = document.getElementById('instances-list');
     const instancesCountBadge = document.getElementById('instances-count-badge');
     const btnSidebarStopp = document.getElementById('btn-sidebar-stopp');
@@ -733,6 +747,12 @@
     document.getElementById('win-max').onclick = () => window.logApi?.action('maximize');
     document.getElementById('win-close').onclick = () => window.logApi?.action('close');
 
+    // Knöpfe, die eine gewählte Instanz mit Inhalt brauchen
+    function updateActionButtons() {
+      const hasLog = Boolean(activeInstanceId && instances.some(i => i.id === activeInstanceId) && allLines.length);
+      btnSave.disabled = !hasLog;
+    }
+
     function classifyLine(text) {
       if (/\[.*?(?:WARN|WARNUNG|WARNING).*?\]/i.test(text) || text.includes('WARN')) return 'warn';
       if (/\[.*?(?:ERROR|FATAL|EXCEPTION|CRASH).*?\]/i.test(text) || /(?:Exception|Error|CrashReport):/i.test(text)) return 'error';
@@ -749,6 +769,7 @@
       if (!visible.length) {
         term.innerHTML = `<div class="empty-notice">${filterQuery ? t('emptyNoMatches', filterQuery) : t('emptyNoLogs')}</div>`;
         lineCounter.textContent = `${allLines.length} ${t('lines')}`;
+        updateActionButtons();
         return;
       }
 
@@ -773,6 +794,7 @@
 
       term.appendChild(fragment);
       lineCounter.textContent = `${allLines.length} ${t('lines')}`;
+      updateActionButtons();
       if (autoscroll) term.scrollTop = term.scrollHeight;
     }
 
@@ -823,6 +845,7 @@
         if (autoscroll) term.scrollTop = term.scrollHeight;
       }
       lineCounter.textContent = `${allLines.length} ${t('lines')}`;
+      if (allLines.length === 1) updateActionButtons();
     }
 
     function updateStatus(state, info) {
@@ -854,6 +877,7 @@
     }
 
     function renderInstancesList() {
+      updateActionButtons();
       instancesListEl.innerHTML = '';
       instancesCountBadge.textContent = instances.length;
 
@@ -906,9 +930,10 @@
         uptime.dataset.start = inst.startTime;
         uptime.dataset.end = inst.endTime || '';
         uptime.dataset.status = inst.status;
+        // Beendete Instanzen: Status plus auf endTime eingefrorene Laufzeit
         uptime.textContent = inst.status === 'running'
           ? formatDuration(inst.startTime, null)
-          : (inst.status === 'crashed' ? t('statusCrashed', inst.exitCode) : t('statusStopped', inst.exitCode));
+          : `${inst.status === 'crashed' ? t('statusCrashed', inst.exitCode) : t('statusStopped', inst.exitCode)} · ${formatDuration(inst.startTime, inst.endTime)}`;
 
         sub.appendChild(userSpan);
         sub.appendChild(dot);
@@ -933,7 +958,7 @@
         } else {
           const closeBtn = document.createElement('button');
           closeBtn.className = 'btn-card-close';
-          closeBtn.title = 'Entfernen';
+          closeBtn.title = t('removeTitle');
           closeBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
           closeBtn.onclick = (e) => {
             e.stopPropagation();
@@ -1009,6 +1034,19 @@
       const origText = copySpan.textContent;
       copySpan.textContent = t('copied');
       setTimeout(() => { copySpan.textContent = origText; }, 1800);
+    };
+
+    // Speichern: nur die Instanz-ID geht an den Hauptprozess, der Pfad kommt aus dem nativen Dialog
+    btnSave.onclick = async () => {
+      if (!activeInstanceId) return;
+      const res = await window.logApi?.saveInstance(activeInstanceId);
+      if (res?.ok) {
+        const span = document.getElementById('btn-save-text');
+        span.textContent = t('saved');
+        setTimeout(() => { span.textContent = t('save'); }, 1800);
+      } else if (res?.error) {
+        console.error(res.error);
+      }
     };
 
     // Clear
@@ -1103,20 +1141,23 @@
         }
       });
 
-      window.logApi.on('instance-exit', ({ instanceId, code, runningCount }) => {
-        const idx = instances.findIndex(i => i.id === instanceId);
-        if (idx !== -1) {
-          instances.splice(idx, 1);
+      // Beendete Instanzen bleiben in der Liste (Status + eingefrorene Laufzeit); das Fenster bleibt offen.
+      window.logApi.on('instance-exit', ({ instance, instances: list, activeInstanceId: newActiveId }) => {
+        if (Array.isArray(list)) instances = list;
+        else if (instance) {
+          const idx = instances.findIndex(i => i.id === instance.id);
+          if (idx !== -1) instances[idx] = instance;
         }
-        if (!instances.length || runningCount <= 0) {
-          window.logApi?.action('close');
+        const previous = activeInstanceId;
+        if (!instances.some(i => i.id === activeInstanceId)) activeInstanceId = newActiveId || (instances.length ? instances[instances.length - 1].id : null);
+        if (activeInstanceId && activeInstanceId !== previous) {
+          const target = activeInstanceId; activeInstanceId = null;
+          selectInstance(target);
           return;
         }
-        if (instanceId === activeInstanceId) {
-          selectInstance(instances[0].id);
-        } else {
-          renderInstancesList();
-        }
+        const active = instances.find(i => i.id === activeInstanceId);
+        if (active) updateStatus(active.status, { code: active.exitCode });
+        renderInstancesList();
       });
 
       window.logApi.on('language-change', (newLang) => {

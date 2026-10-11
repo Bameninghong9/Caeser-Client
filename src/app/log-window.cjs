@@ -1,9 +1,13 @@
-const { BrowserWindow, ipcMain } = require('electron');
+const electron = require('electron');
 const path = require('node:path');
+const fs = require('node:fs/promises');
 
-function createLogWindowManager(controller) {
+// Die Logs selbst liegen in controller.logs (LogStore). Dort gilt auch das Limit für beendete
+// Instanzen (MAX_FINISHED_INSTANCES = 5); der Manager verwaltet nur Fenster und Auswahl.
+function createLogWindowManager(controller, deps = electron) {
+  const { BrowserWindow, ipcMain } = deps;
+  const store = controller.logs;
   let logWin = null;
-  const instances = new Map();
   let activeInstanceId = null;
 
   const sendToWindow = (channel, data) => {
@@ -13,33 +17,17 @@ function createLogWindowManager(controller) {
   };
 
   const getActiveInstance = () => {
-    if (activeInstanceId && instances.has(activeInstanceId)) {
-      return instances.get(activeInstanceId);
-    }
-    const arr = Array.from(instances.values());
-    return arr.length ? arr[arr.length - 1] : null;
+    if (activeInstanceId && store.has(activeInstanceId)) return store.get(activeInstanceId);
+    const latest = store.latestId();
+    return latest ? store.get(latest) : null;
   };
 
   const getInitPayload = () => {
-    const instList = Array.from(instances.values()).map(i => ({
-      id: i.id,
-      profileId: i.profileId,
-      profileName: i.profileName,
-      profileIcon: i.profileIcon,
-      profileVersion: i.profileVersion,
-      profileMode: i.profileMode,
-      accountName: i.accountName,
-      startTime: i.startTime,
-      endTime: i.endTime,
-      status: i.status,
-      exitCode: i.exitCode,
-      lineCount: i.logs ? i.logs.length : 0
-    }));
     const active = getActiveInstance();
     return {
-      instances: instList,
+      instances: store.list(),
       activeInstanceId: active ? active.id : null,
-      logs: active && active.logs ? active.logs : [],
+      logs: active ? [...active.logs] : [],
       profileName: active ? active.profileName : '',
       running: active ? active.status === 'running' : false,
       language: controller.settings?.language || 'de'
@@ -47,7 +35,7 @@ function createLogWindowManager(controller) {
   };
 
   const open = (opts = {}) => {
-    if (opts.instanceId && instances.has(opts.instanceId)) {
+    if (opts.instanceId && store.has(opts.instanceId)) {
       activeInstanceId = opts.instanceId;
     }
     if (logWin && !logWin.isDestroyed()) {
@@ -95,100 +83,40 @@ function createLogWindowManager(controller) {
     return logWin;
   };
 
+  const isOpen = () => Boolean(logWin && !logWin.isDestroyed());
+
   const handleEmit = (name, data) => {
     if (name === 'game-spawn') {
-      const instId = data?.instanceId || ('inst_' + Date.now());
-      const instData = {
-        id: instId,
-        profileId: data?.instance?.profileId || '',
-        profileName: data?.profileName || data?.instance?.profileName || 'Minecraft',
-        profileIcon: data?.instance?.profileIcon || null,
-        profileVersion: data?.instance?.profileVersion || '',
-        profileMode: data?.instance?.profileMode || 'vanilla',
-        accountName: data?.instance?.accountName || 'Player',
-        startTime: data?.instance?.startTime || Date.now(),
-        endTime: null,
-        status: 'running',
-        exitCode: null,
-        logs: []
-      };
-      instances.set(instId, instData);
+      const instId = data?.instanceId;
+      const inst = instId && store.get(instId);
+      if (!inst) return;
       activeInstanceId = instId;
-
-      sendToWindow('instance-spawn', {
-        instance: {
-          id: instData.id,
-          profileId: instData.profileId,
-          profileName: instData.profileName,
-          profileIcon: instData.profileIcon,
-          profileVersion: instData.profileVersion,
-          profileMode: instData.profileMode,
-          accountName: instData.accountName,
-          startTime: instData.startTime,
-          status: 'running',
-          lineCount: 0
-        },
-        activeInstanceId
-      });
-
+      sendToWindow('instance-spawn', { instance: store.summary(inst), activeInstanceId });
       if (data?.autoOpenLog !== false && controller.settings?.autoOpenLog !== false) {
         open({ instanceId: instId });
       }
     } else if (name === 'game-log') {
-      let instId = activeInstanceId;
-      let lineText = '';
-      if (typeof data === 'string') {
-        lineText = data;
-      } else if (data && typeof data === 'object') {
-        lineText = data.line || '';
-        if (data.instanceId) instId = data.instanceId;
-      }
-
-      if (!instId) {
-        instId = 'default_inst';
-        if (!instances.has(instId)) {
-          instances.set(instId, {
-            id: instId,
-            profileName: data?.profileName || 'Minecraft',
-            accountName: 'Player',
-            startTime: Date.now(),
-            status: 'running',
-            logs: []
-          });
-          activeInstanceId = instId;
-        }
-      }
-
-      const inst = instances.get(instId);
-      if (inst) {
-        inst.logs.push(lineText);
-        if (inst.logs.length > 3000) inst.logs.shift();
-      }
-
+      const instId = data?.instanceId;
+      if (!instId) return;
       if (instId === activeInstanceId) {
-        sendToWindow('game-log', { instanceId: instId, line: lineText });
+        sendToWindow('game-log', { instanceId: instId, line: data.line || '' });
       } else {
-        sendToWindow('instance-log-count', { instanceId: instId, lineCount: inst ? inst.logs.length : 0 });
+        sendToWindow('instance-log-count', { instanceId: instId, lineCount: store.get(instId)?.logs.length || 0 });
       }
     } else if (name === 'game-exit') {
-      const instId = data?.instanceId || activeInstanceId;
-      if (instId && instances.has(instId)) {
-        instances.delete(instId);
-      }
-
-      const runningCount = data?.runningCount ?? 0;
-      if (runningCount <= 0 || instances.size === 0) {
-        instances.clear();
-        activeInstanceId = null;
-        if (logWin && !logWin.isDestroyed()) {
-          logWin.close();
-        }
-      } else {
-        if (activeInstanceId === instId) {
-          const remaining = Array.from(instances.keys());
-          activeInstanceId = remaining.length ? remaining[remaining.length - 1] : null;
-        }
-        sendToWindow('init-logs', getInitPayload());
+      // Instanz bleibt mit Status erhalten; das Fenster wird nie automatisch geschlossen.
+      const instId = data?.instanceId;
+      if (activeInstanceId && !store.has(activeInstanceId)) activeInstanceId = store.latestId();
+      const inst = instId && store.get(instId);
+      sendToWindow('instance-exit', {
+        instanceId: instId,
+        instance: inst ? store.summary(inst) : null,
+        instances: store.list(),
+        activeInstanceId,
+        runningCount: data?.runningCount ?? 0
+      });
+      if (inst && inst.status === 'crashed' && !isOpen() && controller.settings?.autoOpenLog !== false) {
+        open({ instanceId: instId });
       }
     } else if (name === 'settings-update') {
       if (data?.language) {
@@ -197,40 +125,39 @@ function createLogWindowManager(controller) {
     }
   };
 
+  const fromLogWindow = event => Boolean(logWin && event.senderFrame === logWin.webContents.mainFrame);
+
   // IPC Handlers for the log window
   ipcMain.handle('log-get-init', (event) => {
-    if (!logWin || event.senderFrame !== logWin.webContents.mainFrame) {
+    if (!fromLogWindow(event)) {
       return { instances: [], activeInstanceId: null, logs: [], language: 'de' };
     }
     return getInitPayload();
   });
 
   ipcMain.handle('log-select-instance', (event, instanceId) => {
-    if (!logWin || event.senderFrame !== logWin.webContents.mainFrame) return null;
-    if (instances.has(instanceId)) {
-      activeInstanceId = instanceId;
-      const inst = instances.get(instanceId);
-      return {
-        instanceId: inst.id,
-        profileName: inst.profileName,
-        status: inst.status,
-        exitCode: inst.exitCode,
-        logs: inst.logs
-      };
-    }
-    return null;
+    if (!fromLogWindow(event)) return null;
+    const inst = store.get(instanceId);
+    if (!inst) return null;
+    activeInstanceId = instanceId;
+    return {
+      instanceId: inst.id,
+      profileName: inst.profileName,
+      status: inst.status,
+      exitCode: inst.exitCode,
+      logs: [...inst.logs]
+    };
   });
 
   ipcMain.handle('log-stop-instance', (event, instanceId) => {
-    if (!logWin || event.senderFrame !== logWin.webContents.mainFrame) return false;
+    if (!fromLogWindow(event)) return false;
     return controller.stopGame(instanceId);
   });
 
   ipcMain.handle('log-clear-instance', (event, instanceId) => {
-    if (!logWin || event.senderFrame !== logWin.webContents.mainFrame) return false;
+    if (!fromLogWindow(event)) return false;
     const targetId = instanceId || activeInstanceId;
-    if (targetId && instances.has(targetId)) {
-      instances.get(targetId).logs = [];
+    if (targetId && store.clear(targetId)) {
       sendToWindow('clear-logs', { instanceId: targetId });
       return true;
     }
@@ -238,45 +165,57 @@ function createLogWindowManager(controller) {
   });
 
   ipcMain.handle('log-close-instance', (event, instanceId) => {
-    if (!logWin || event.senderFrame !== logWin.webContents.mainFrame) return false;
-    if (instances.has(instanceId)) {
-      const inst = instances.get(instanceId);
-      if (inst.status === 'running') {
-        controller.stopGame(instanceId);
-      }
-      instances.delete(instanceId);
-      if (activeInstanceId === instanceId) {
-        const remaining = Array.from(instances.keys());
-        activeInstanceId = remaining.length ? remaining[remaining.length - 1] : null;
-      }
-      sendToWindow('init-logs', getInitPayload());
-      return true;
-    }
-    return false;
+    if (!fromLogWindow(event)) return false;
+    const inst = store.get(instanceId);
+    if (!inst) return false;
+    if (inst.status === 'running') controller.stopGame(instanceId);
+    store.remove(instanceId);
+    if (activeInstanceId === instanceId) activeInstanceId = store.latestId();
+    sendToWindow('init-logs', getInitPayload());
+    return true;
   });
 
   ipcMain.handle('log-clear', (event) => {
-    if (!logWin || event.senderFrame !== logWin.webContents.mainFrame) return;
+    if (!fromLogWindow(event)) return;
     const active = getActiveInstance();
     if (active) {
-      active.logs = [];
+      store.clear(active.id);
       sendToWindow('clear-logs', { instanceId: active.id });
     }
   });
 
   ipcMain.handle('log-copy', (event, text) => {
-    if (!logWin || event.senderFrame !== logWin.webContents.mainFrame) return false;
+    if (!fromLogWindow(event)) return false;
     try {
-      const { clipboard } = require('electron');
-      clipboard.writeText(String(text ?? ''));
+      deps.clipboard.writeText(String(text ?? ''));
       return true;
     } catch {
       return false;
     }
   });
 
+  // Speichert die Zeilen einer Instanz als .txt. Die UI übergibt nur die ID, Pfad kommt aus dem nativen Dialog.
+  ipcMain.handle('log-save-instance', async (event, instanceId) => {
+    if (!fromLogWindow(event)) return { ok: false, error: 'Zugriff verweigert.' };
+    const inst = store.get(instanceId);
+    if (!inst) return { ok: false, error: 'Instanz nicht gefunden.' };
+    const stamp = new Date(inst.startTime).toISOString().slice(0, 19).replace(/[T:]/g, '-');
+    const result = await deps.dialog.showSaveDialog(logWin, {
+      title: 'Log speichern',
+      defaultPath: `minecraft-log-${stamp}.txt`,
+      filters: [{ name: 'Textdatei', extensions: ['txt'] }]
+    });
+    if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+    try {
+      await fs.writeFile(result.filePath, inst.logs.join('\r\n'), 'utf8');
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: `Log konnte nicht gespeichert werden: ${error.message}` };
+    }
+  });
+
   ipcMain.handle('log-window-action', (event, action) => {
-    if (!logWin || event.senderFrame !== logWin.webContents.mainFrame) return;
+    if (!fromLogWindow(event)) return;
     if (action === 'minimize') logWin.minimize();
     else if (action === 'maximize') logWin.isMaximized() ? logWin.unmaximize() : logWin.maximize();
     else if (action === 'close') logWin.close();
@@ -285,11 +224,12 @@ function createLogWindowManager(controller) {
   return {
     open,
     handleEmit,
+    get activeInstanceId() { return activeInstanceId; },
     get logs() {
       const act = getActiveInstance();
-      return act ? act.logs : [];
+      return act ? [...act.logs] : [];
     },
-    get isOpen() { return Boolean(logWin && !logWin.isDestroyed()); }
+    get isOpen() { return isOpen(); }
   };
 }
 

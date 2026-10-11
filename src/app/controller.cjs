@@ -12,6 +12,7 @@ const { DiscordRpcClient } = require('../shared/discord-rpc.cjs');
 const { createLogParser } = require('../game/log-parser.cjs');
 const { diagnoseCrash, executeAutoFix } = require('../game/crash-doctor.cjs');
 const { Wallpapers } = require('./wallpaper.cjs');
+const { LogStore } = require('../game/log-store.cjs');
 const { validateSkinDataUrl, validateSkinName, MAX_SKINS } = require('../shared/skins.cjs');
 const themes = ['Cyberpunk','Ultraviolet','Toxic','Inferno','Glacier','Bloodmoon','Aurora','Bubblegum','Limelight','Sunset','Electric','Nebula','Goldrush','Emerald','Plasma','Crimson'];
 const DEFAULT_COSMETICS = {
@@ -31,7 +32,7 @@ class Controller {
     this.profiles = new Profiles(this.store, this.maxMemoryMb);
     this.accounts = []; this.busy = false; this.game = null; this.games = new Set(); this.instances = new Map(); this.loginController = null;
     this.secrets = {};
-    this.logHistory = [];
+    this.logs = new LogStore(); // einzige Ablage der Spiel-Logs; this.instances hält nur laufende Prozesse
     this.wallpaper = null; this.wallpapers = new Wallpapers(directory);
     this.screenshotThumbsCache = new Map();
     this.screenshotIndex = new Map(); this.screenshotSalt = crypto.randomBytes(32);
@@ -531,32 +532,17 @@ class Controller {
       this.game = child;
       const instanceId = 'inst_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
       child.instanceId = instanceId;
-      const instanceData = {
-        id: instanceId,
-        profileId: profile.id,
-        profileName: profile.name,
-        profileIcon: profile.icon || null,
-        profileVersion: profile.version,
-        profileMode: profile.mode,
-        accountName: account?.name || 'Player',
-        startTime: Date.now(),
-        endTime: null,
-        status: 'running',
-        exitCode: null,
-        process: child,
-        logs: []
-      };
+      const instanceData = { id: instanceId, process: child, stoppedByUser: false, startTime: Date.now() };
       this.instances.set(instanceId, instanceData);
+      this.logs.add({ id: instanceId, profileId: profile.id, profileName: profile.name, profileIcon: profile.icon || null, profileVersion: profile.version,
+        profileMode: profile.mode, accountName: account?.name || 'Player', startTime: instanceData.startTime });
 
       let session, timer;
       let buffer = '';
       const redact = text => String(text).replaceAll(account.accessToken, '[TOKEN]').replaceAll(account.refreshToken, '[TOKEN]');
       const parser = createLogParser(parsedLine => {
         const item = redact(parsedLine).slice(0, 2000);
-        instanceData.logs.push(item);
-        if (instanceData.logs.length > 3000) instanceData.logs.shift();
-        this.logHistory.push(item);
-        if (this.logHistory.length > 2500) this.logHistory.shift();
+        this.logs.push(instanceId, item);
         this.emit('game-log', { instanceId, line: item, profileName: profile.name });
       });
       const output = data => {
@@ -610,9 +596,10 @@ class Controller {
           this.game = null;
         }
         const wasManualStop = Boolean(child.wasKilledByUser || instanceData.stoppedByUser);
-        instanceData.status = (code === 0 || wasManualStop ? 'stopped' : 'crashed');
-        instanceData.exitCode = wasManualStop ? 0 : code;
-        instanceData.endTime = Date.now();
+        const status = (code === 0 || wasManualStop ? 'stopped' : 'crashed');
+        const exitCode = wasManualStop ? 0 : code;
+        const endTime = Date.now();
+        this.logs.finish(instanceId, { status, exitCode, endTime });
 
         if (session) await session.flush().catch(()=>this.emit('notice','Spielstatistik konnte nicht gespeichert werden.'));
 
@@ -621,7 +608,7 @@ class Controller {
           try {
             diagnosis = await diagnoseCrash({
               code,
-              logLines: instanceData.logs.length ? instanceData.logs : this.logHistory,
+              logLines: this.logs.lines(instanceId),
               profile,
               instanceDir: prepared.instance,
               maxMemoryMb: this.maxMemoryMb
@@ -630,6 +617,9 @@ class Controller {
             console.error('Fehler bei Crash-Diagnose:', err);
           }
         }
+        // Prozess beendet und Diagnose gelaufen: Eintrag freigeben, die Logs bleiben im LogStore.
+        instanceData.process = null;
+        this.instances.delete(instanceId);
 
         if (this.games.size === 0 && this.settings.discordRpc !== false) {
           this.discordRpc.setActivity({
@@ -641,7 +631,10 @@ class Controller {
 
         this.emit('game-exit', {
           instanceId,
-          code: wasManualStop ? 0 : code,
+          code: exitCode,
+          status,
+          exitCode,
+          endTime,
           diagnosis: wasManualStop ? null : diagnosis,
           wasManualStop,
           runningCount: this.games.size
@@ -660,21 +653,23 @@ class Controller {
   stopGame(instanceId) {
     if (!instanceId) {
       for (const [id, inst] of this.instances.entries()) {
-        if (inst.status === 'running' && inst.process) {
+        if (inst.process) {
           this.stopGame(id);
         }
       }
       return true;
     }
     const inst = this.instances.get(instanceId);
-    if (inst && inst.process && !inst.process.killed) {
+    const proc = inst?.process;
+    if (proc && !proc.killed) {
       try {
         inst.stoppedByUser = true;
-        if (inst.process) inst.process.wasKilledByUser = true;
-        inst.process.kill('SIGTERM');
+        proc.wasKilledByUser = true;
+        proc.kill('SIGTERM');
+        // Prozessreferenz festhalten: beim Beenden wird inst.process auf null gesetzt.
         setTimeout(() => {
-          if (!inst.process.killed) {
-            try { inst.process.kill('SIGKILL'); } catch {}
+          if (proc.exitCode === null && !proc.killed) {
+            try { proc.kill('SIGKILL'); } catch {}
           }
         }, 3000);
         return true;

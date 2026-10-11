@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('logApi', {
   action: (action) => ipcRenderer.invoke('log-window-action', action),
   clear: () => ipcRenderer.invoke('log-clear'),
   copy: (text) => ipcRenderer.invoke('log-copy', String(text ?? '')),
+  saveInstance: (instanceId) => ipcRenderer.invoke('log-save-instance', instanceId),
   on: (channel, callback) => {
     const allowed = [
       'init-logs',
