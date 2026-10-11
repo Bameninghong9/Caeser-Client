@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "comment": "Caeser Client - Remote Emote Unlocks & Permissions",
+  "admins": [
+    "Bameninghong",
+    "Bamen",
+    "Bameninghong9"
+  ],
+  "default_unlocked": [
+    "T_POSE",
+    "SIT"
+  ],
+  "players": {
+    "Bameninghong": [
+      "*"
+    ],
+    "BeispielSpieler": [
+      "WHEELCHAIR",
+      "GUITAR"
+    ]
+  }
+}
