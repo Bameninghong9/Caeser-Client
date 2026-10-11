@@ -16,6 +16,10 @@ function downloadURL(url, source) {
   if (parsed.protocol !== 'https:' || !allowed || parsed.username || parsed.password) throw new Error('Die Download-Adresse gehört nicht zur gewählten Mod-Quelle.');
   return url;
 }
+// Mitgelieferte Dateien des Caeser-Profils; sie dürfen weder deaktiviert noch gelöscht werden.
+function managedMod(profile, name) {
+  return profile.mode === 'caeser' && (name === 'caeserclient-1.0.0.jar' || name === 'fabric-api-0.140.2+1.21.11.jar');
+}
 async function directoryBytes(dir) {
   let bytes = 0;
   let entries;
@@ -72,9 +76,7 @@ class Mods {
       return items.sort((a, b) => a.name.localeCompare(b.name));
     };
 
-    const mods = await loadItems('mods', /\.jar(\.disabled)?$/i, modsManifest.mods || [], name => {
-      return profile.mode === 'caeser' && (name === 'caeserclient-1.0.0.jar' || name === 'fabric-api-0.140.2+1.21.11.jar');
-    });
+    const mods = await loadItems('mods', /\.jar(\.disabled)?$/i, modsManifest.mods || [], name => managedMod(profile, name));
     const resourcepacks = await loadItems('resourcepacks', /\.zip(\.disabled)?$/i, rpManifest.items || rpManifest.resourcepacks || []);
     const shaders = await loadItems('shaderpacks', /\.zip(\.disabled)?$/i, shadersManifest.items || shadersManifest.shaders || []);
 
@@ -364,4 +366,4 @@ class Mods {
     return this.details(profileId);
   }); }
 }
-module.exports = { Mods, filename, downloadURL, directoryBytes };
+module.exports = { Mods, filename, downloadURL, directoryBytes, managedMod };

@@ -89,22 +89,95 @@ describe('Crash Doctor Diagnostics', () => {
     assert.equal(savedProfile.memoryMb, 4096);
   });
 
-  test('executes disable-mod autoFix', async () => {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'caeser-test-mods-'));
-    const modsDir = path.join(tmpDir, 'mods');
+});
+
+describe('Crash Doctor Reparaturen', () => {
+  const { Store } = require('../src/data/store.cjs');
+  const { Profiles, instanceKey } = require('../src/data/profiles.cjs');
+
+  async function setup(t, mode = 'fabric') {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'caeser-doctor-'));
+    t.after(() => fs.rm(tmp, { recursive: true, force: true }));
+    const profiles = new Profiles(new Store(tmp), 16384);
+    await profiles.load({});
+    const profile = await profiles.save({ name: 'Test', version: '1.21.11', mode, memoryMb: 2048 });
+    const controller = { root: path.join(tmp, 'minecraft'), profiles, mods: { busy: false }, game: null, busy: false };
+    const modsDir = path.join(controller.root, 'instances', instanceKey(profile), 'mods');
     await fs.mkdir(modsDir, { recursive: true });
+    return { tmp, profiles, profile, controller, modsDir };
+  }
+  const disable = (controller, payload) => executeAutoFix({ type: 'disable-mod', payload }, controller);
+
+  test('disable-mod leitet den Ordner aus dem Profil ab und ignoriert instanceDir', async t => {
+    const { tmp, profile, controller, modsDir } = await setup(t);
     await fs.writeFile(path.join(modsDir, 'optifine-1.21.jar'), 'dummy');
+    const foreign = path.join(tmp, 'fremd', 'mods'); await fs.mkdir(foreign, { recursive: true });
+    await fs.writeFile(path.join(foreign, 'optifine-1.21.jar'), 'dummy');
 
-    const res = await executeAutoFix({
-      type: 'disable-mod',
-      payload: { instanceDir: tmpDir, modName: 'optifine' }
-    }, {});
-
+    const res = await disable(controller, { profileId: profile.id, modName: 'optifine', instanceDir: path.join(tmp, 'fremd') });
     assert.equal(res.success, true);
-    const files = await fs.readdir(modsDir);
-    assert.ok(files.includes('optifine-1.21.jar.disabled'));
-    assert.ok(!files.includes('optifine-1.21.jar'));
+    assert.deepEqual(await fs.readdir(modsDir), ['optifine-1.21.jar.disabled']);
+    assert.deepEqual(await fs.readdir(foreign), ['optifine-1.21.jar'], 'fremder Ordner bleibt unberührt');
+  });
 
-    await fs.rm(tmpDir, { recursive: true, force: true });
+  test('disable-mod nur mit instanceDir hat keine Wirkung', async t => {
+    const { tmp, controller } = await setup(t);
+    const foreign = path.join(tmp, 'fremd', 'mods'); await fs.mkdir(foreign, { recursive: true });
+    await fs.writeFile(path.join(foreign, 'optifine.jar'), 'dummy');
+    await assert.rejects(disable(controller, { instanceDir: path.join(tmp, 'fremd'), modName: 'optifine' }), /Profil nicht gefunden/);
+    assert.deepEqual(await fs.readdir(foreign), ['optifine.jar']);
+  });
+
+  test('unbekannte profileId wird abgelehnt', async t => {
+    const { controller } = await setup(t);
+    await assert.rejects(disable(controller, { profileId: '00000000-0000-4000-8000-000000000000', modName: 'optifine' }), /Profil nicht gefunden/);
+  });
+
+  test('zu kurze, ungültige oder mehrdeutige Mod-Namen benennen nichts um', async t => {
+    const { profile, controller, modsDir } = await setup(t);
+    const files = ['optifine-1.21.jar', 'optifine-addon.jar', 'sodium.jar'];
+    for (const f of files) await fs.writeFile(path.join(modsDir, f), 'dummy');
+    for (const modName of ['a', 'ab', '-_-']) await assert.rejects(disable(controller, { profileId: profile.id, modName }), /zu kurz/);
+    for (const modName of ['', 42, null, '../sodium', 'mods\\sodium', 'x'.repeat(101)]) await assert.rejects(disable(controller, { profileId: profile.id, modName }), /Ungültige Mod-Angaben/);
+    await assert.rejects(disable(controller, { profileId: profile.id, modName: 'optifine' }), err => /Mehrere Mod-Dateien/.test(err.message) && err.message.includes('optifine-1.21.jar') && err.message.includes('optifine-addon.jar'));
+    assert.deepEqual((await fs.readdir(modsDir)).sort(), files.sort());
+  });
+
+  test('exakter Dateiname hat Vorrang vor Teiltreffern', async t => {
+    const { profile, controller, modsDir } = await setup(t);
+    await fs.writeFile(path.join(modsDir, 'sodium.jar'), 'dummy');
+    await fs.writeFile(path.join(modsDir, 'sodium-extra.jar'), 'dummy');
+    await disable(controller, { profileId: profile.id, modName: 'sodium' });
+    assert.deepEqual((await fs.readdir(modsDir)).sort(), ['sodium-extra.jar', 'sodium.jar.disabled']);
+  });
+
+  test('mitgelieferte Caeser-Dateien werden nicht deaktiviert', async t => {
+    const { profile, controller, modsDir } = await setup(t, 'caeser');
+    await fs.writeFile(path.join(modsDir, 'caeserclient-1.0.0.jar'), 'dummy');
+    await assert.rejects(disable(controller, { profileId: profile.id, modName: 'caeserclient-1.0.0' }), /gehört zum Caeser-Profil/);
+    assert.deepEqual(await fs.readdir(modsDir), ['caeserclient-1.0.0.jar']);
+  });
+
+  test('Reparaturen werden abgelehnt, solange Minecraft läuft oder Mods installiert werden', async t => {
+    const { profile, controller, modsDir } = await setup(t);
+    await fs.writeFile(path.join(modsDir, 'sodium.jar'), 'dummy');
+    await assert.rejects(disable({ ...controller, game: {} }, { profileId: profile.id, modName: 'sodium' }), /Minecraft beenden/);
+    await assert.rejects(disable({ ...controller, mods: { busy: true } }, { profileId: profile.id, modName: 'sodium' }), /Mods installiert/);
+    await assert.rejects(executeAutoFix({ type: 'increase-ram', payload: { profileId: profile.id, newMemoryMb: 4096 } }, { ...controller, game: {} }), /Minecraft beenden/);
+    assert.deepEqual(await fs.readdir(modsDir), ['sodium.jar']);
+  });
+
+  test('RAM-Reparatur an einem nicht aktiven Profil wechselt das aktive Profil nicht', async t => {
+    const { profiles, profile, controller } = await setup(t);
+    const other = await profiles.save({ name: 'Aktiv', version: '1.21.11', mode: 'vanilla', memoryMb: 2048 });
+    assert.equal(profiles.data.activeId, other.id);
+    await executeAutoFix({ type: 'increase-ram', payload: { profileId: profile.id, newMemoryMb: 4096 } }, controller);
+    assert.equal(profiles.data.activeId, other.id);
+    assert.equal(profiles.data.profiles.find(p => p.id === profile.id).memoryMb, 4096);
+  });
+
+  test('Diagnose liefert profileId statt instanceDir in der Payload', async () => {
+    const result = await diagnoseCrash({ code: 1, logLines: ["Mod 'iris' is incompatible with mod 'optifine'"], profile: { id: 'p1' }, instanceDir: 'C:\\irgendwo' });
+    assert.deepEqual(result.autoFix.payload, { profileId: 'p1', modName: 'optifine' });
   });
 });

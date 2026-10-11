@@ -32,14 +32,14 @@ class Profiles {
   }); }
   selected() { return this.data.profiles.find(profile => profile.id === this.data.activeId); }
   transact(fn) { const task = this.queue.catch(() => {}).then(fn); this.queue = task; return task; }
-  save(input) { return this.transact(async () => {
+  save(input, { activate = true } = {}) { return this.transact(async () => {
     const fields = validateProfile(input, this.maxMemoryMb);
     const existing = input.id && this.data.profiles.find(profile => profile.id === input.id);
     if (input.id && !existing) throw new Error('Profil nicht gefunden.');
     if (existing && (existing.version !== fields.version || existing.mode !== fields.mode)) throw new Error('Version und Spielart eines bestehenden Profils bleiben fest. Erstelle dafür ein neues Profil.');
     if (!existing && this.data.profiles.length >= 100) throw new Error('Maximal 100 Profile möglich.');
     const profile = { ...(existing || { id: randomUUID(), createdAt: Date.now() }), ...fields };
-    const next = { profiles: existing ? this.data.profiles.map(p => p.id === profile.id ? profile : p) : [...this.data.profiles, profile], activeId: profile.id };
+    const next = { profiles: existing ? this.data.profiles.map(p => p.id === profile.id ? profile : p) : [...this.data.profiles, profile], activeId: activate ? profile.id : this.data.activeId };
     await this.store.write('profiles.json', next); this.data = next; return profile;
   }); }
   select(id) { return this.transact(async () => {

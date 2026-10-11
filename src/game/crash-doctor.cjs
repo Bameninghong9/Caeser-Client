@@ -1,5 +1,8 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { inside } = require('../shared/net.cjs');
+const { instanceKey } = require('../data/profiles.cjs');
+const { managedMod } = require('../mods/service.cjs');
 
 async function findLatestCrashReport(instanceDir) {
   if (!instanceDir) return null;
@@ -94,7 +97,7 @@ async function diagnoseCrash({ code, logLines = [], profile, instanceDir, maxMem
       autoFix: {
         type: 'disable-mod',
         buttonText: `Mod "${jarName}" automatisch deaktivieren`,
-        payload: { instanceDir, modName: jarName.replace(/\.jar$/i, '') }
+        payload: { profileId: profile?.id, modName: jarName.replace(/\.jar$/i, '') }
       }
     };
   }
@@ -118,7 +121,7 @@ async function diagnoseCrash({ code, logLines = [], profile, instanceDir, maxMem
       autoFix: {
         type: 'disable-mod',
         buttonText: `Mod "${modB}" automatisch deaktivieren`,
-        payload: { instanceDir, modName: modB }
+        payload: { profileId: profile?.id, modName: modB }
       }
     };
   }
@@ -143,7 +146,7 @@ async function diagnoseCrash({ code, logLines = [], profile, instanceDir, maxMem
       autoFix: {
         type: 'disable-mod',
         buttonText: `Mod "${modHost}" automatisch deaktivieren`,
-        payload: { instanceDir, modName: modHost }
+        payload: { profileId: profile?.id, modName: modHost }
       }
     };
   }
@@ -167,7 +170,7 @@ async function diagnoseCrash({ code, logLines = [], profile, instanceDir, maxMem
       autoFix: {
         type: 'disable-mod',
         buttonText: `Mod "${culprit}" deaktivieren`,
-        payload: { instanceDir, modName: culprit }
+        payload: { profileId: profile?.id, modName: culprit }
       }
     };
   }
@@ -223,13 +226,15 @@ async function diagnoseCrash({ code, logLines = [], profile, instanceDir, maxMem
 
 async function executeAutoFix(action, controller) {
   if (!action || !action.type) throw new Error('Ungültige Reparatur-Aktion.');
+  if (controller.busy || controller.game) throw new Error('Bitte zuerst Minecraft beenden, bevor eine Reparatur ausgeführt wird.');
+  if (controller.mods?.busy) throw new Error('Bitte warte, bis die Mods installiert wurden.');
 
   if (action.type === 'increase-ram') {
     const { profileId, newMemoryMb } = action.payload || {};
     if (!profileId || !newMemoryMb) throw new Error('Ungültige Profil-Angaben für RAM-Reparatur.');
     const profile = controller.profiles.data.profiles.find(p => p.id === profileId);
     if (!profile) throw new Error('Profil nicht gefunden.');
-    await controller.profiles.save({ ...profile, memoryMb: newMemoryMb });
+    await controller.profiles.save({ ...profile, memoryMb: newMemoryMb }, { activate: false });
     return { success: true, message: `Arbeitsspeicher wurde erfolgreich auf ${newMemoryMb} MB erhöht!` };
   }
 
@@ -239,30 +244,33 @@ async function executeAutoFix(action, controller) {
   }
 
   if (action.type === 'disable-mod') {
-    const { instanceDir, modName } = action.payload || {};
-    if (!instanceDir || !modName) throw new Error('Ungültige Mod-Angaben.');
-    const modsDir = path.join(instanceDir, 'mods');
-    const entries = await fs.readdir(modsDir, { withFileTypes: true });
-    let disabledFile = null;
+    // Der Ordner wird ausschließlich aus dem Profil abgeleitet; ein Pfad aus der UI wird ignoriert.
+    const { profileId, modName } = action.payload || {};
+    const profile = controller.profiles.data.profiles.find(p => p.id === profileId);
+    if (!profile) throw new Error('Profil nicht gefunden.');
+    if (typeof modName !== 'string' || !modName.length || modName.length > 100 || /[\\/]/.test(modName)) throw new Error('Ungültige Mod-Angaben.');
     const cleanMod = modName.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (cleanMod.length < 3) throw new Error(`Der Mod-Name "${modName}" ist zu kurz, um die Datei eindeutig zu finden. Bitte die Mod im Profil manuell deaktivieren.`);
+    const modsDir = path.join(inside(path.join(controller.root, 'instances'), instanceKey(profile)), 'mods');
+    let entries;
+    try { entries = await fs.readdir(modsDir, { withFileTypes: true }); }
+    catch (err) { if (err.code !== 'ENOENT') throw err; entries = []; }
 
-    for (const entry of entries) {
-      if (entry.isFile() && entry.name.endsWith('.jar')) {
-        const cleanEntry = entry.name.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (cleanEntry.includes(cleanMod) || entry.name.toLowerCase().includes(modName.toLowerCase())) {
-          const oldPath = path.join(modsDir, entry.name);
-          const newPath = path.join(modsDir, entry.name + '.disabled');
-          await fs.rename(oldPath, newPath);
-          disabledFile = entry.name;
-          break;
-        }
-      }
-    }
+    const jars = entries.filter(entry => entry.isFile() && entry.name.toLowerCase().endsWith('.jar'));
+    let matches = jars.filter(entry => entry.name.toLowerCase().replace(/[^a-z0-9]/g, '').includes(cleanMod) || entry.name.toLowerCase().includes(modName.toLowerCase()));
+    // Ein exakter Dateiname (ohne .jar) hat Vorrang vor Teiltreffern.
+    const exact = matches.filter(entry => entry.name.toLowerCase() === modName.toLowerCase() + '.jar');
+    if (exact.length === 1) matches = exact;
+    if (!matches.length) throw new Error(`Mod-Datei für "${modName}" konnte im mods-Ordner nicht gefunden werden.`);
+    if (matches.length > 1) throw new Error(`Mehrere Mod-Dateien passen zu "${modName}": ${matches.map(e => e.name).join(', ')}. Bitte die richtige Mod im Profil manuell deaktivieren.`);
+    const file = matches[0].name;
+    if (managedMod(profile, file)) throw new Error(`"${file}" gehört zum Caeser-Profil und kann nicht deaktiviert werden.`);
 
-    if (disabledFile) {
-      return { success: true, message: `Mod "${disabledFile}" wurde deaktiviert (.disabled)!` };
-    }
-    throw new Error(`Mod-Datei für "${modName}" konnte im mods-Ordner nicht gefunden werden.`);
+    const oldPath = inside(modsDir, file);
+    const newPath = inside(modsDir, file + '.disabled');
+    try { await fs.access(newPath); throw new Error('Die Zieldatei existiert bereits.'); } catch (err) { if (err.code !== 'ENOENT') throw err; }
+    await fs.rename(oldPath, newPath);
+    return { success: true, message: `Mod "${file}" wurde deaktiviert (.disabled)!` };
   }
 
   throw new Error(`Unbekannter Reparatur-Typ: ${action.type}`);
