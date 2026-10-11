@@ -166,6 +166,28 @@ class Controller {
     } catch {}
     return 'classic';
   }
+  // Kennzeichen eines Skin-Stands (ID + Variante + Hash der Bilddaten), um doppelte Uploads zu vermeiden.
+  skinUploadState(id, variant) {
+    if (id === 'steve') return { skinId: 'steve', variant: '', hash: '' };
+    const skin = this.skins.find(s => s.id === id);
+    if (!skin?.data) return null;
+    const chosen = (variant === 'slim' || variant === 'classic') ? variant : (skin.variant || this.detectSkinVariant(skin.data));
+    return { skinId: id, variant: chosen, hash: crypto.createHash('sha256').update(skin.data).digest('hex') };
+  }
+  async recordSkinUpload(accountId, uploadState) {
+    this.settings.skinUploads = { ...this.settings.skinUploads, [accountId]: uploadState };
+    await this.saveSettings();
+  }
+  // Beim Spielstart nur hochladen, wenn sich der Stand für dieses Konto geändert hat. Fehler blockieren den Start nicht.
+  async syncSkinOnLaunch() {
+    const id = this.settings.activeSkinId;
+    if (!id || id === 'account') return;
+    const wanted = this.skinUploadState(id);
+    const last = this.settings.skinUploads?.[this.settings.activeAccount];
+    if (wanted && last && last.skinId === wanted.skinId && last.variant === wanted.variant && last.hash === wanted.hash) return;
+    const result = await this.uploadSkinToAccount(id).catch(error => ({ ok: false, error: error.message }));
+    if (!result?.ok) this.emit('notice', `Skin konnte nicht auf das Minecraft-Konto übertragen werden: ${result?.error || 'Unbekannter Fehler'}`);
+  }
   async uploadSkinToAccount(id, variant) {
     let account = this.accounts.find(a => a.id === this.settings.activeAccount);
     if (!account) {
@@ -190,6 +212,7 @@ class Controller {
         }
         account.skinUrl = '';
         await this.updateAccount(account);
+        await this.recordSkinUpload(account.id, this.skinUploadState('steve'));
         return { ok: true, reset: true };
       } catch (err) {
         return { ok: false, error: err.message };
@@ -204,12 +227,13 @@ class Controller {
     if (!skin || !skin.data) {
       return { ok: false, error: 'Skin nicht in der Skin-Bibliothek gefunden.' };
     }
+    const uploadState = this.skinUploadState(id, variant);
 
     const comma = skin.data.indexOf(',');
     const b64 = comma >= 0 ? skin.data.slice(comma + 1) : skin.data;
     const buffer = Buffer.from(b64, 'base64');
 
-    const chosenVariant = (variant === 'slim' || variant === 'classic') ? variant : (skin.variant || this.detectSkinVariant(buffer));
+    const chosenVariant = uploadState.variant;
 
     const formData = new FormData();
     formData.append('variant', chosenVariant);
@@ -241,6 +265,7 @@ class Controller {
         account.skinUrl = activeUrl;
         await this.updateAccount(account);
       }
+      await this.recordSkinUpload(account.id, uploadState);
       return { ok: true, uploaded: true, variant: chosenVariant, skinUrl: activeUrl };
     } catch (err) {
       return { ok: false, error: `Verbindungsfehler zu Mojang: ${err.message}` };
@@ -505,9 +530,7 @@ class Controller {
       account = await auth.refresh(account); await this.updateAccount(account);
       const prepared = await launcher.prepare({ root: this.root, ...options, resources: this.resources, report });
       account = await auth.refresh(account); await this.updateAccount(account);
-      if (this.settings.activeSkinId && this.settings.activeSkinId !== 'account') {
-        await this.uploadSkinToAccount(this.settings.activeSkinId).catch(() => null);
-      }
+      await this.syncSkinOnLaunch();
       const child = launcher.start(prepared, account, options.memoryMb);
       this.games.add(child);
       this.game = child;
