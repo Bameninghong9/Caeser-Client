@@ -70,6 +70,17 @@ export function initSettings() {
   const opacityVal = $('wallpaper-opacity-val');
   const blurVal = $('wallpaper-blur-val');
 
+  // Bild- oder Video-Element per DOM statt HTML-String
+  function wallpaperMedia(wallpaper, className) {
+    const isVideo = wallpaper.type === 'video';
+    const el = document.createElement(isVideo ? 'video' : 'img');
+    el.className = className;
+    if (isVideo) { el.muted = true; el.autoplay = true; el.loop = true; el.playsInline = true; }
+    else el.alt = '';
+    el.setAttribute('src', wallpaper.url);
+    return el;
+  }
+
   async function updateWallpaperDisplay(customWallpaperMeta) {
     if (customWallpaperMeta && customWallpaperMeta.enabled !== false) {
       if (!cachedWallpaper && api.getWallpaper) {
@@ -82,18 +93,11 @@ export function initSettings() {
           const isVideo = cachedWallpaper.type === 'video';
           const existing = layer.firstElementChild;
           if (!existing || (isVideo && existing.tagName !== 'VIDEO') || (!isVideo && existing.tagName !== 'IMG') || existing.getAttribute('src') !== cachedWallpaper.url) {
-            layer.innerHTML = isVideo
-              ? `<video src="${cachedWallpaper.url}" autoplay loop muted playsinline class="custom-wallpaper-media"></video>`
-              : `<img src="${cachedWallpaper.url}" alt="" class="custom-wallpaper-media">`;
+            layer.replaceChildren(wallpaperMedia(cachedWallpaper, 'custom-wallpaper-media'));
           }
         }
         const preview = $('wallpaper-preview-inner');
-        if (preview) {
-          const isVideo = cachedWallpaper.type === 'video';
-          preview.innerHTML = isVideo
-            ? `<video src="${cachedWallpaper.url}" autoplay loop muted playsinline class="wallpaper-preview-media"></video>`
-            : `<img src="${cachedWallpaper.url}" alt="" class="wallpaper-preview-media">`;
-        }
+        if (preview) preview.replaceChildren(wallpaperMedia(cachedWallpaper, 'wallpaper-preview-media'));
         if (removeWallpaperBtn) removeWallpaperBtn.hidden = false;
         const op = customWallpaperMeta.opacity ?? 40;
         const bl = customWallpaperMeta.blur ?? 0;

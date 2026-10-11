@@ -3,6 +3,9 @@ import { openProfile } from './profiles.js';
 import { SkinRenderer } from './skin-renderer.js';
 import { t } from './i18n.js';
 
+const LOADER_ICONS = ['vanilla', 'fabric', 'caeser'];
+const loaderIcon = mode => `assets/loaders/${LOADER_ICONS.includes(mode) ? mode : 'vanilla'}.svg`;
+
 let skinRenderer = null;
 let currentSkinKey = '__init__';
 
@@ -46,7 +49,12 @@ function renderPlay() {
       const row = document.createElement('button');
       row.type = 'button';
       row.className = 'dropdown-profile-item' + (item.id === profile?.id ? ' active' : '');
-      row.innerHTML = `<img src="assets/loaders/${item.mode}.svg" alt=""><div><strong>${item.name}</strong><small>${item.version} · ${loaderName(item.mode)} · ${item.memoryMb} MB</small></div><span class="active-mark">${item.id === profile?.id ? '✓' : ''}</span>`;
+      // Nur festes Gerüst als HTML, alle Profildaten per textContent
+      row.innerHTML = '<img alt=""><div><strong></strong><small></small></div><span class="active-mark"></span>';
+      row.querySelector('img').src = loaderIcon(item.mode);
+      row.querySelector('strong').textContent = item.name;
+      row.querySelector('small').textContent = `${item.version} · ${loaderName(item.mode)} · ${item.memoryMb} MB`;
+      row.querySelector('.active-mark').textContent = item.id === profile?.id ? '✓' : '';
       row.onclick = () => action(async () => {
         const drop = $('play-profile-dropdown');
         if (drop) drop.hidden = true;
@@ -61,7 +69,7 @@ function renderPlay() {
     for (const item of [...model.state.profiles].sort((a,b)=>(b.lastPlayedAt||0)-(a.lastPlayedAt||0)).slice(0,4)){
       const button=document.createElement('button');button.className='quick-profile';button.classList.toggle('active',item.id===profile?.id);
       button.innerHTML='<img alt=""><span><strong></strong><small></small></span>';
-      button.querySelector('img').src=`assets/loaders/${item.mode}.svg`;button.querySelector('strong').textContent=item.name;button.querySelector('small').textContent=`${item.version} · ${loaderName(item.mode)}`;
+      button.querySelector('img').src=loaderIcon(item.mode);button.querySelector('strong').textContent=item.name;button.querySelector('small').textContent=`${item.version} · ${loaderName(item.mode)}`;
       button.onclick=()=>action(async()=>update(await api.selectProfile(item.id)));quick.append(button);
     }
   }
