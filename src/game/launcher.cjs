@@ -214,36 +214,68 @@ async function prepare({ root, version, mode, instanceKey, javaPath, resources, 
     existingCosmetics = JSON.parse(raw);
   } catch {}
 
-  const cosmeticsData = {
-    wings: { type: 'none', color: '#a855f7' },
-    head: { type: 'none', color: '#facc15' },
-    pet: { type: 'none', color: '#38bdf8' },
-    accessories: [],
-    accessoryCustomPlayers: {},
-    ...existingCosmetics,
-    ...(cosmetics || {})
+  const launcherSettingsPath = path.join(root, '..', 'settings.json');
+  let launcherSettings = {};
+  try {
+    launcherSettings = JSON.parse(await fs.readFile(launcherSettingsPath, 'utf8'));
+  } catch {}
+
+  const baseCosmetics = existingCosmetics || {};
+  const launcherCosmetics = launcherSettings.cosmetics || cosmetics || {};
+
+  const wingsVal = baseCosmetics.wings ?? launcherCosmetics.wings ?? { type: 'none', color: '#a855f7' };
+  const headVal = baseCosmetics.head ?? launcherCosmetics.head ?? { type: 'none', color: '#facc15' };
+  const petVal = baseCosmetics.pet ?? launcherCosmetics.pet ?? { type: 'none', color: '#38bdf8' };
+
+  let accessoriesVal = [];
+  if (Array.isArray(baseCosmetics.accessories) && baseCosmetics.accessories.length > 0) {
+    accessoriesVal = baseCosmetics.accessories;
+  } else if (Array.isArray(launcherCosmetics.accessories) && launcherCosmetics.accessories.length > 0) {
+    accessoriesVal = launcherCosmetics.accessories;
+  } else if (petVal && petVal.type && petVal.type !== 'none') {
+    const pType = String(petVal.type).toLowerCase();
+    accessoriesVal = [pType === 'self' || pType === 'custom' ? 'minime_sit' : pType];
+  }
+
+  const customPlayersVal = {
+    ...(launcherCosmetics.accessoryCustomPlayers || {}),
+    ...(baseCosmetics.accessoryCustomPlayers || {})
+  };
+  if (petVal?.customPlayer && !customPlayersVal.minime_sit) {
+    customPlayersVal.minime_sit = petVal.customPlayer;
+  }
+
+  const sidesVal = {
+    ...(launcherCosmetics.accessorySides || {}),
+    ...(baseCosmetics.accessorySides || {})
   };
 
-  if (Array.isArray(existingCosmetics.accessories) && existingCosmetics.accessories.length > 0) {
-    cosmeticsData.accessories = existingCosmetics.accessories;
-  }
-  if (existingCosmetics.accessoryCustomPlayers && typeof existingCosmetics.accessoryCustomPlayers === 'object') {
-    cosmeticsData.accessoryCustomPlayers = {
-      ...existingCosmetics.accessoryCustomPlayers,
-      ...(cosmeticsData.accessoryCustomPlayers || {})
-    };
-  }
-  if (existingCosmetics.pet && (!cosmetics || cosmetics.pet?.type === 'none')) {
-    cosmeticsData.pet = existingCosmetics.pet;
-  }
-  if (existingCosmetics.wings && (!cosmetics || cosmetics.wings?.type === 'none')) {
-    cosmeticsData.wings = existingCosmetics.wings;
-  }
-  if (existingCosmetics.head && (!cosmetics || cosmetics.head?.type === 'none')) {
-    cosmeticsData.head = existingCosmetics.head;
-  }
+  const placementsVal = {
+    ...(launcherCosmetics.petPlacements || {}),
+    ...(baseCosmetics.petPlacements || {})
+  };
+
+  const cosmeticsData = {
+    wings: wingsVal,
+    head: headVal,
+    pet: petVal,
+    accessories: accessoriesVal,
+    accessoryCustomPlayers: customPlayersVal,
+    accessorySides: sidesVal,
+    petPlacements: placementsVal
+  };
 
   await fs.writeFile(cosmeticsPath, JSON.stringify(cosmeticsData, null, 2), 'utf8');
+
+  try {
+    if (launcherSettingsPath && launcherSettings && typeof launcherSettings === 'object') {
+      launcherSettings.cosmetics = {
+        ...(launcherSettings.cosmetics || {}),
+        ...cosmeticsData
+      };
+      await fs.writeFile(launcherSettingsPath, JSON.stringify(launcherSettings, null, 2), 'utf8');
+    }
+  } catch {}
 
   const profileTitle = profileName || name || '';
   const profileVersion = version || metadata.id || '';

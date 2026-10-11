@@ -487,3 +487,101 @@ footer{display:none!important}
   color: #cfc7d8 !important;
   margin: 14px 0 24px !important;
 }
+
+
+/* Lightbox Mouse Wheel Zoom, Pan & Navigation */
+.lightbox-dialog {
+  max-width: 94vw !important;
+  width: 1200px !important;
+}
+.lightbox-dialog::backdrop {
+  cursor: pointer;
+}
+.lightbox-img-wrap {
+  position: relative !important;
+  user-select: none !important;
+  overflow: hidden !important;
+  cursor: default;
+}
+.lightbox-img-wrap img {
+  transform-origin: center center !important;
+  user-select: none !important;
+  -webkit-user-drag: none !important;
+  will-change: transform;
+}
+.lightbox-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: rgba(14, 10, 22, 0.78);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 30;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+  padding: 0;
+  outline: none;
+}
+.lightbox-nav-btn:hover {
+  background: rgba(40, 26, 65, 0.95);
+  border-color: rgba(168, 85, 247, 0.8);
+  color: #c084fc;
+  box-shadow: 0 0 24px rgba(168, 85, 247, 0.5), 0 4px 20px rgba(0, 0, 0, 0.7);
+  transform: translateY(-50%) scale(1.12);
+}
+.lightbox-nav-btn:active {
+  transform: translateY(-50%) scale(0.92);
+}
+.lightbox-nav-prev {
+  left: 14px;
+}
+.lightbox-nav-next {
+  right: 14px;
+}
+.lightbox-zoom-badge {
+  font-size: 11px !important;
+  color: #a3a7c2 !important;
+  font-family: ui-monospace, monospace !important;
+  padding: 4px 9px !important;
+  background: rgba(255, 255, 255, 0.07) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  transition: all 0.15s ease !important;
+}
+.lightbox-zoom-badge:hover {
+  background: rgba(168, 85, 247, 0.18) !important;
+  border-color: rgba(168, 85, 247, 0.5) !important;
+  color: #ffffff !important;
+}
+
+.gallery-action-btn.delete-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all 0.18s ease !important;
+}
+.gallery-action-btn.delete-btn:hover {
+  background: rgba(239, 68, 68, 0.22) !important;
+  border-color: rgba(239, 68, 68, 0.7) !important;
+  color: #ef4444 !important;
+}
+.gallery-action-btn.delete-btn svg {
+  display: block !important;
+  pointer-events: none;
+  transition: stroke 0.18s ease, filter 0.18s ease;
+}
+.gallery-action-btn.delete-btn:hover svg {
+  stroke: #ef4444 !important;
+  filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.65));
+}

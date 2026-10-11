@@ -44,8 +44,64 @@ function openRenameDialog(filePath, currentName) {
   if (dialog) dialog.showModal();
 }
 
+let currentZoom = 1.0;
+let isPanning = false;
+let startX = 0;
+let startY = 0;
+let panX = 0;
+let panY = 0;
+
+function updateZoomTransform() {
+  const img = $('lightbox-img');
+  if (!img) return;
+  img.style.transition = isPanning ? 'none' : 'transform 0.08s ease-out';
+  img.style.transform = `scale(${currentZoom}) translate(${panX}px, ${panY}px)`;
+  const badge = $('lightbox-zoom-badge');
+  if (badge) {
+    badge.textContent = `${Math.round(currentZoom * 100)}%`;
+  }
+}
+
+function resetZoom() {
+  currentZoom = 1.0;
+  panX = 0;
+  panY = 0;
+  isPanning = false;
+  const img = $('lightbox-img');
+  if (img) {
+    img.style.transition = 'transform 0.15s ease-out';
+    img.style.transform = 'scale(1) translate(0px, 0px)';
+    img.style.cursor = 'default';
+  }
+  const badge = $('lightbox-zoom-badge');
+  if (badge) {
+    badge.textContent = '100%';
+  }
+}
+
+function updateLightboxNavButtons() {
+  const prevBtn = $('lightbox-prev-btn');
+  const nextBtn = $('lightbox-next-btn');
+  const hasMultiple = screenshotsList && screenshotsList.length > 1;
+  if (prevBtn) prevBtn.style.display = hasMultiple ? 'flex' : 'none';
+  if (nextBtn) nextBtn.style.display = hasMultiple ? 'flex' : 'none';
+}
+
+function navigateLightbox(direction) {
+  if (!screenshotsList || screenshotsList.length <= 1) return;
+  const currentPath = currentLightboxItem?.path;
+  const currentIndex = screenshotsList.findIndex(s => s.path === currentPath);
+  let nextIndex = 0;
+  if (currentIndex !== -1) {
+    nextIndex = (currentIndex + direction + screenshotsList.length) % screenshotsList.length;
+  }
+  openLightbox(screenshotsList[nextIndex]);
+}
+
 async function openLightbox(item) {
+  if (!item) return;
   currentLightboxItem = item;
+  resetZoom();
   const dialog = $('screenshot-lightbox-dialog');
   const title = $('lightbox-title');
   const img = $('lightbox-img');
@@ -54,7 +110,8 @@ async function openLightbox(item) {
   if (img) {
     img.src = item.thumb || 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
   }
-  if (dialog) dialog.showModal();
+  updateLightboxNavButtons();
+  if (dialog && !dialog.open) dialog.showModal();
 
   try {
     const fullData = await api.getScreenshotFull(item.path);
@@ -129,12 +186,12 @@ function renderGallery() {
     const copyBtn = document.createElement('button');
     copyBtn.type = 'button';
     copyBtn.className = 'gallery-action-btn copy-btn';
-    copyBtn.textContent = 'ᴄᴏᴘʏ';
+    copyBtn.textContent = 'COPY';
     copyBtn.onclick = (e) => {
       e.stopPropagation();
       action(async () => {
         await api.copyScreenshot(item.path);
-        toast(t('screenshotCopied', 'Screenshot in die Zwischenablage kopiert!'));
+        toast('Screenshot copied to Clipboard');
       });
     };
 
@@ -142,7 +199,7 @@ function renderGallery() {
     const openBtn = document.createElement('button');
     openBtn.type = 'button';
     openBtn.className = 'gallery-action-btn open-btn';
-    openBtn.textContent = 'ᴏᴘᴇɴ';
+    openBtn.textContent = 'OPEN';
     openBtn.onclick = (e) => {
       e.stopPropagation();
       action(async () => {
@@ -164,7 +221,8 @@ function renderGallery() {
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
     deleteBtn.className = 'gallery-action-btn delete-btn';
-    deleteBtn.textContent = 'ᴅᴇʟᴇᴛᴇ';
+    deleteBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></svg>`;
+    deleteBtn.setAttribute('aria-label', t('btnDelete', 'Löschen'));
     deleteBtn.onclick = (e) => {
       e.stopPropagation();
       action(async () => {
@@ -181,7 +239,7 @@ function renderGallery() {
         updateGalleryCount();
         renderGallery();
         await api.deleteScreenshot(targetPath);
-        toast(t('screenshotDeleted', 'Screenshot gelöscht.'));
+        toast('Screenshot deleted');
       });
     };
 
@@ -261,7 +319,7 @@ export function initGallery() {
       if (!currentLightboxItem) return;
       action(async () => {
         await api.copyScreenshot(currentLightboxItem.path);
-        toast(t('screenshotCopied', 'Screenshot in die Zwischenablage kopiert!'));
+        toast('Screenshot copied to Clipboard');
       });
     };
   }
@@ -293,10 +351,142 @@ export function initGallery() {
         renderGallery();
         $('screenshot-lightbox-dialog')?.close();
         await api.deleteScreenshot(targetPath);
-        toast(t('screenshotDeleted', 'Screenshot gelöscht.'));
+        toast('Screenshot deleted');
       });
     };
   }
+
+  // Lightbox zoom with mouse wheel and drag-to-pan
+  const lbWrap = document.querySelector('.lightbox-img-wrap');
+  const lbImg = $('lightbox-img');
+  const lbDialog = $('screenshot-lightbox-dialog');
+  const lbBadge = $('lightbox-zoom-badge');
+  const lbPrev = $('lightbox-prev-btn');
+  const lbNext = $('lightbox-next-btn');
+
+  if (lbBadge) {
+    lbBadge.onclick = () => resetZoom();
+  }
+
+  if (lbPrev) {
+    lbPrev.onclick = (e) => {
+      e.stopPropagation();
+      navigateLightbox(-1);
+    };
+  }
+
+  if (lbNext) {
+    lbNext.onclick = (e) => {
+      e.stopPropagation();
+      navigateLightbox(1);
+    };
+  }
+
+  if (lbDialog) {
+    lbDialog.addEventListener('close', () => resetZoom());
+
+    // Click outside lightbox dialog (on window/backdrop) to close
+    let mouseDownOnBackdrop = false;
+
+    lbDialog.addEventListener('mousedown', (e) => {
+      if (e.target === lbDialog) {
+        const rect = lbDialog.getBoundingClientRect();
+        const isOutside = (
+          e.clientX < rect.left ||
+          e.clientX > rect.right ||
+          e.clientY < rect.top ||
+          e.clientY > rect.bottom
+        );
+        mouseDownOnBackdrop = isOutside;
+      } else {
+        mouseDownOnBackdrop = false;
+      }
+    });
+
+    lbDialog.addEventListener('click', (e) => {
+      if (isPanning) return;
+      if (e.target === lbDialog && mouseDownOnBackdrop) {
+        const rect = lbDialog.getBoundingClientRect();
+        const isOutside = (
+          e.clientX < rect.left ||
+          e.clientX > rect.right ||
+          e.clientY < rect.top ||
+          e.clientY > rect.bottom
+        );
+        if (isOutside) {
+          lbDialog.close();
+        }
+      }
+      mouseDownOnBackdrop = false;
+    });
+
+    // Wheel zoom on the lightbox dialog (works whenever hovering anywhere in dialog except buttons)
+    lbDialog.addEventListener('wheel', (e) => {
+      if (!lbDialog.open) return;
+      if (e.target.closest('button')) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const zoomFactor = e.deltaY < 0 ? 1.18 : 0.85;
+      const nextZoom = Math.min(Math.max(currentZoom * zoomFactor, 0.5), 10.0);
+      if (nextZoom <= 1.0) {
+        currentZoom = 1.0;
+        panX = 0;
+        panY = 0;
+      } else {
+        currentZoom = nextZoom;
+      }
+      if (lbImg) {
+        lbImg.style.cursor = currentZoom > 1.0 ? (isPanning ? 'grabbing' : 'grab') : 'default';
+      }
+      updateZoomTransform();
+    }, { passive: false });
+  }
+
+  if (lbWrap && lbImg) {
+    // Drag to pan when zoomed
+    lbWrap.addEventListener('mousedown', (e) => {
+      if (e.button !== 0 || currentZoom <= 1.0) return;
+      if (e.target.closest('button')) return;
+      isPanning = true;
+      startX = e.clientX - panX * currentZoom;
+      startY = e.clientY - panY * currentZoom;
+      lbImg.style.cursor = 'grabbing';
+      e.preventDefault();
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isPanning) return;
+      panX = (e.clientX - startX) / currentZoom;
+      panY = (e.clientY - startY) / currentZoom;
+      updateZoomTransform();
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isPanning) {
+        isPanning = false;
+        if (lbImg) lbImg.style.cursor = currentZoom > 1.0 ? 'grab' : 'default';
+      }
+    });
+
+    // Double-click to reset zoom
+    lbWrap.addEventListener('dblclick', (e) => {
+      if (e.target.closest('button')) return;
+      resetZoom();
+    });
+  }
+
+  // Keyboard navigation for Lightbox (Left / Right Arrow)
+  window.addEventListener('keydown', (e) => {
+    if (!lbDialog || !lbDialog.open) return;
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      navigateLightbox(-1);
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      navigateLightbox(1);
+    }
+  });
 
   document.addEventListener('language-change', () => {
     renderGallery();
