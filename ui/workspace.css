@@ -620,6 +620,3 @@ footer{display:none!important}
   filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.65));
 }
 
-/* Mod-Quellen: CurseForge-Schlüssel */
-#curseforge-key{width:220px;padding:9px 12px;font-size:11px;background:#130f18;border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#fff;font-family:monospace}
-

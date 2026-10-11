@@ -37,7 +37,6 @@ class Controller {
 
     this.profiles = new Profiles(this.store, this.maxMemoryMb);
     this.accounts = []; this.busy = false; this.game = null; this.games = new Set(); this.instances = new Map(); this.loginController = null;
-    this.secrets = {};
     this.logs = new LogStore(); // einzige Ablage der Spiel-Logs; this.instances hält nur laufende Prozesse
     this.wallpaper = null; this.wallpapers = new Wallpapers(directory);
     this.screenshotThumbsCache = new Map();
@@ -67,7 +66,7 @@ class Controller {
     } else {
       this.discordRpc.setEnabled(false);
     }
-    try { this.secrets = await this.store.read('integrations.bin',{},true); } catch { this.notice='Mod-Quellen konnten nicht entschlüsselt werden. Bitte den CurseForge-Schlüssel erneut hinterlegen.'; }
+    await this.removeLegacyIntegrations();
     try { this.accounts = await this.store.read('accounts.bin', [], true); }
     catch { this.notice = 'Gespeicherte Konten konnten nicht entschlüsselt werden. Bitte erneut anmelden.'; }
     if ((!this.settings.activeAccount || !this.accounts.some(a => a.id === this.settings.activeAccount)) && this.accounts.length) {
@@ -397,9 +396,18 @@ class Controller {
     await this.saveSettings();
     return { state: this.state(), wallpaper: null };
   }
-  async setCurseForgeKey(key) {
-    if (typeof key !== 'string' || key.length > 1024 || /[\r\n]/.test(key)) throw new Error('Ungültiger API-Schlüssel.');
-    const secrets = {...this.secrets,curseforgeKey:key.trim()}; await this.store.write('integrations.bin',secrets,true); this.secrets=secrets; return this.state();
+  // Migration: Früher konnten Nutzer einen eigenen CurseForge-Schlüssel in integrations.bin speichern.
+  // Er wird nicht mehr gebraucht und entfernt; die Datei verschwindet, wenn danach nichts übrig bleibt.
+  async removeLegacyIntegrations() {
+    let saved;
+    try { saved = await this.store.read('integrations.bin', null, true); }
+    catch { await this.store.delete('integrations.bin').catch(() => {}); return; }
+    if (!saved) return;
+    const rest = { ...(typeof saved === 'object' ? saved : {}) }; delete rest.curseforgeKey;
+    try {
+      if (Object.keys(rest).length) await this.store.write('integrations.bin', rest, true);
+      else await this.store.delete('integrations.bin');
+    } catch { await this.store.delete('integrations.bin').catch(() => {}); }
   }
   saveSettings() { return this.store.write('settings.json', this.settings); }
   saveAccounts() { return this.store.write('accounts.bin', this.accounts, true); }

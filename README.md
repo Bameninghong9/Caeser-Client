@@ -24,7 +24,14 @@ Die Profilübersicht zeigt zwei kompakte Karten pro Reihe, auch im normalen Fens
 
 **Mods hinzufügen** öffnet rechts den Mod-Browser. Minecraft-Version und Loader kommen unveränderlich aus dem Profil. Modrinth funktioniert direkt; passende Dateien und erforderliche Abhängigkeiten werden erneut geprüft, mit Prüfsummen heruntergeladen und erst nach erfolgreichem Download veröffentlicht. Installierte Mods lassen sich deaktivieren. Die mitgelieferten Caeser-Dateien bleiben geschützt. Während Minecraft läuft sind Mod-Änderungen gesperrt.
 
-**CurseForge** benötigt einen eigenen API-Schlüssel unter **Einstellungen → Mod-Quellen** (alternativ `CAESER_CURSEFORGE_KEY`). Der Launcher bringt keinen eigenen Schlüssel mit; einen kostenlosen Schlüssel gibt es im [CurseForge-Entwicklerportal](https://console.curseforge.com/), das die Einstellungsseite verlinkt. Er wird mit Windows `safeStorage` in `integrations.bin` verschlüsselt. Ohne Schlüssel erscheint eine verständliche Einrichtungsmeldung. Downloads, die ein Mod-Autor für Drittanbieter-Launcher deaktiviert hat, werden nicht umgangen. Der Adapter ist mit API-Testantworten geprüft; ein echter CurseForge-Download ist mangels Schlüssel noch nicht bestätigt.
+**CurseForge** funktioniert ohne eigene Eingabe: Nutzer müssen keinen API-Schlüssel hinterlegen. Ob CurseForge in einer Version verfügbar ist, legt allein der Build fest. Ohne Zugang ist der CurseForge-Reiter im Mod-Browser deaktiviert („In dieser Version nicht verfügbar“), Modrinth funktioniert immer. Downloads, die ein Mod-Autor für Drittanbieter-Launcher deaktiviert hat, werden nicht umgangen.
+
+Für Entwickler und Builds (Werte werden vor `npm start` und `npm run build` von `scripts/write-build-config.cjs` in das nicht eingecheckte `src/generated/build-config.cjs` geschrieben):
+
+- `CAESER_CURSEFORGE_PROXY` – HTTPS-URL eines eigenen Proxys, der den Schlüssel serverseitig anhängt (empfohlen, Vorlage unter `proxy/`).
+- `CAESER_CURSEFORGE_KEY` – eigener, offiziell über die [CurseForge-Konsole](https://console.curseforge.com/) beantragter Schlüssel des Caeser-Client-Projekts. Er wird mit der App ausgeliefert und lässt sich darin grundsätzlich auslesen. In der Entwicklung (nicht gepackt) wird die Variable auch direkt zur Laufzeit gelesen.
+
+Schlüssel anderer Launcher oder öffentlich kursierende Schlüssel dürfen nicht verwendet werden. Ein früher gespeicherter eigener Schlüssel (`integrations.bin`) wird beim Start automatisch entfernt.
 
 Bereits vorhandene Mods werden nicht automatisch aktualisiert. Bei widersprüchlichen festen Abhängigkeiten wird die Installation abgebrochen. Vanilla-Profile unterstützen keine Mods. Verschiedene Mods können trotz passender Spielversion miteinander inkompatibel sein.
 

@@ -69,3 +69,19 @@ test('Abgelehnter Zugang oder Rate-Limit: Meldung ohne Verweis auf Einstellungen
     t.mock.restoreAll();
   }
 });
+
+test('Migration: alter curseforgeKey in integrations.bin wird entfernt', async t => {
+  const { dir, controller } = await setup(t, null, async d => {
+    await fs.writeFile(path.join(d, 'integrations.bin'), fakeEncryption.encryptString(JSON.stringify({ curseforgeKey: 'alter-nutzerschluessel' })));
+  });
+  await assert.rejects(fs.access(path.join(dir, 'integrations.bin')), 'leere Datei wird gelöscht');
+  assert.equal(controller.notice, undefined, 'kein Hinweis an den Nutzer');
+  assert.equal(typeof controller.setCurseForgeKey, 'undefined');
+  assert.ok(!JSON.stringify(controller.state()).includes('alter-nutzerschluessel'));
+});
+
+test('Migration: unlesbare integrations.bin wird still entfernt', async t => {
+  const { dir, controller } = await setup(t, null, async d => { await fs.writeFile(path.join(d, 'integrations.bin'), 'kaputt'); });
+  await assert.rejects(fs.access(path.join(dir, 'integrations.bin')));
+  assert.equal(controller.notice, undefined);
+});

@@ -13,7 +13,7 @@ contextBridge.exposeInMainWorld('caeser', {
   removeMod: input=>invoke('mod-remove',input), checkModUpdates: id=>invoke('mod-check-updates',id),
   updateMod: input=>invoke('mod-update',input), updateAllMods: id=>invoke('mod-update-all',id),
   installCaeserMod: id=>invoke('caeser-mod-install',id),
-  setCurseForgeKey: key=>invoke('curseforge-key',key), accountAvatar: id=>invoke('account-avatar',id),
+  accountAvatar: id=>invoke('account-avatar',id),
   getSkins: () => invoke('skins-get'), addSkin: input => invoke('skin-add', input),
   removeSkin: id => invoke('skin-remove', id), renameSkin: (id, name, variant) => invoke('skin-rename', typeof id === 'object' ? id : { id, name, variant }),
   selectSkin: (id, variant) => invoke('skin-select', typeof id === 'object' ? id : { id, variant }),

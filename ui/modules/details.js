@@ -278,6 +278,19 @@ function renderResults() {
   }
 }
 
+// CurseForge ist nur verfügbar, wenn der Build einen Zugang mitbringt; sonst Reiter deaktiviert mit Hinweis.
+function syncCurseforgeTab() {
+  const tab = document.querySelector('[data-source="curseforge"]');
+  if (!tab) return;
+  const available = model.state?.curseforgeAvailable === true;
+  tab.disabled = !available;
+  tab.title = available ? '' : t('curseforgeUnavailable');
+  if (!available && source === 'curseforge') {
+    source = 'modrinth';
+    document.querySelectorAll('[data-source]').forEach(b => b.classList.toggle('selected', b.dataset.source === 'modrinth'));
+  }
+}
+
 async function search(append = false) {
   const p = profile(); if (!p || !$('mods-drawer').open) return;
   const request = ++generation, selectedSource = source, currentType = drawerContentType;
@@ -290,7 +303,6 @@ async function search(append = false) {
   } catch (error) {
     if (request !== generation) return;
     const box = element('div', 'source-empty'); box.append(element('h3', '', currentLanguage === 'en' ? 'Source unavailable' : 'Quelle nicht verfügbar'), element('p', '', error.message));
-    if (selectedSource === 'curseforge') { const button = element('button', 'secondary', currentLanguage === 'en' ? 'Open mod sources' : 'Mod-Quellen öffnen'); button.onclick = () => { $('mods-drawer').close(); navigate('settings'); document.querySelector('[data-settings-category="general"]')?.click(); $('mod-settings')?.scrollIntoView({ block: 'center' }); $('curseforge-key')?.focus(); }; box.append(button); }
     $('mod-results').replaceChildren(box); $('mod-results-status').textContent = currentLanguage === 'en' ? 'Search failed' : 'Suche fehlgeschlagen';
   }
 }
@@ -321,6 +333,7 @@ export function initDetails() {
     header(); navigate('profile'); refresh();
   });
 
+  onState(syncCurseforgeTab);
   onState(() => { if (model.detailId) { if (!profile()) { model.detailId = null; model.details = null; navigate('profiles'); } else header(); } });
   $('back-profiles').onclick = () => navigate('profiles');
   $('detail-folder').onclick = () => action(() => api.profileFolder(model.detailId));
@@ -343,6 +356,7 @@ export function initDetails() {
     if (activeContentType === 'mods' && p.mode === 'vanilla') return;
     drawerContentType = activeContentType;
     updateDrawerHeader();
+    syncCurseforgeTab();
     $('mods-drawer').showModal();
     search();
   };
