@@ -4,23 +4,47 @@ import { t } from './i18n.js';
 
 let renamingSkinId = null;
 let renamingSkinVariant = 'classic';
+let dialogSkinRenderer = null;
+let renamingSkinTexture = null;
 
 function syncModelPillsUI() {
   const classicBtn = $('skin-model-classic');
   const slimBtn = $('skin-model-slim');
   if (classicBtn) classicBtn.classList.toggle('active', renamingSkinVariant === 'classic');
   if (slimBtn) slimBtn.classList.toggle('active', renamingSkinVariant === 'slim');
+
+  if (dialogSkinRenderer) {
+    dialogSkinRenderer.setVariant(renamingSkinVariant);
+  }
+  const badge = $('rename-skin-preview-badge');
+  const badgeText = $('rename-skin-preview-badge-text');
+  if (badge && badgeText) {
+    badge.className = 'skin-dialog-preview-badge ' + renamingSkinVariant;
+    badgeText.textContent = renamingSkinVariant === 'slim' ? t('slimModel', 'Slim (3px)') : t('classicModel', 'Classic (4px)');
+  }
 }
 
-function openRenameDialog(id, currentName, currentVariant = 'classic') {
+function openRenameDialog(id, currentName, currentVariant = 'classic', texture = null) {
   renamingSkinId = id;
   renamingSkinVariant = (currentVariant === 'slim' || currentVariant === 'classic') ? currentVariant : 'classic';
+  renamingSkinTexture = texture;
   const dialog = $('rename-skin-dialog');
   const input = $('rename-skin-input');
   if (input) {
     input.value = currentName;
     setTimeout(() => { input.focus(); input.select(); }, 50);
   }
+
+  const canvas = $('rename-skin-preview-canvas');
+  if (canvas) {
+    if (!dialogSkinRenderer) {
+      dialogSkinRenderer = new SkinRenderer(canvas, { draggable: true, variant: renamingSkinVariant });
+    }
+    dialogSkinRenderer.setSkin(texture);
+    dialogSkinRenderer.setVariant(renamingSkinVariant);
+    dialogSkinRenderer.resume();
+  }
+
   syncModelPillsUI();
   if (dialog) dialog.showModal();
 }
@@ -80,7 +104,7 @@ function createSkinWindowCard({ id, name, subtitle, isActive, canDelete, canRena
   preview.append(img);
 
   // Render 3D pose snapshot asynchronously
-  renderSkinSnapshot(skinTexture).then(src => {
+  renderSkinSnapshot(skinTexture, effectiveVariant || 'classic').then(src => {
     if (src && card.isConnected) {
       img.src = src;
     }
@@ -104,7 +128,7 @@ function createSkinWindowCard({ id, name, subtitle, isActive, canDelete, canRena
         v = await detectSkinVariant(skinTexture);
         effectiveVariant = v;
       }
-      openRenameDialog(id, name, v || 'classic');
+      openRenameDialog(id, name, v || 'classic', skinTexture);
     };
     actions.append(renameBtn);
   }
@@ -533,4 +557,11 @@ export function initSkins() {
       });
     };
   }
+
+  // Pause preview renderer when dialog is closed
+  $('rename-skin-dialog')?.addEventListener('close', () => {
+    if (dialogSkinRenderer) {
+      dialogSkinRenderer.pause();
+    }
+  });
 }

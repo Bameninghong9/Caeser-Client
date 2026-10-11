@@ -283,6 +283,7 @@ export class SkinRenderer {
   constructor(canvas, options = {}) {
     this.canvas = canvas;
     this.options = options;
+    this.variant = (options.variant === 'slim' || options.variant === 'classic') ? options.variant : 'classic';
     this.cosmetics = options.cosmetics || {
       wings: { type: 'none', color: '#a855f7' },
       head: { type: 'none', color: '#facc15' },
@@ -313,6 +314,20 @@ export class SkinRenderer {
       this.startLoop();
     } else {
       this.render(0);
+    }
+  }
+
+  setVariant(variant) {
+    const norm = variant === 'slim' ? 'slim' : 'classic';
+    if (this.variant === norm && this.meshes) return;
+    this.variant = norm;
+    if (this.isSupported) {
+      this.initGeometry();
+      if (this.options?.static || this.paused || !this.animFrame) {
+        this.render(this.lastFrameTime || 0);
+      }
+    } else {
+      this.renderFallback(this.currentSkinImg);
     }
   }
 
@@ -455,6 +470,15 @@ export class SkinRenderer {
 
   initGeometry() {
     const gl = this.gl;
+    if (this.meshes) {
+      for (const mesh of this.meshes) {
+        if (mesh.vbo) gl.deleteBuffer(mesh.vbo);
+        if (mesh.ibo) gl.deleteBuffer(mesh.ibo);
+      }
+    }
+
+    const isSlim = this.variant === 'slim';
+
     // Box specs for all body parts
     const parts = [
       // Head: 8x8x8, offset (0, 4, 0), pivot (0, 0, 0)
@@ -471,19 +495,39 @@ export class SkinRenderer {
       { id: 'jacket', w: 8, h: 12, d: 4, pivot: [0, 0, 0], pos: [0, -6, 0], expand: 0.45,
         uv: { front: [20,36,8,12], back: [32,36,8,12], top: [20,32,8,4], bottom: [28,32,8,4], right: [16,36,4,12], left: [28,36,4,12] } },
 
-      // Right arm: 4x12x4, pivot (-6, -1, 0), pos (-6, -6, 0)
-      { id: 'rightArm', w: 4, h: 12, d: 4, pivot: [-6, -1, 0], pos: [-6, -6, 0],
-        uv: { front: [44,20,4,12], back: [52,20,4,12], top: [44,16,4,4], bottom: [48,16,4,4], right: [40,20,4,12], left: [48,20,4,12] } },
+      // Right arm: 4x12x4 (Classic) or 3x12x4 (Slim)
+      isSlim ? {
+        id: 'rightArm', w: 3, h: 12, d: 4, pivot: [-5.5, -1, 0], pos: [-5.5, -6, 0],
+        uv: { front: [44,20,3,12], back: [51,20,3,12], top: [44,16,3,4], bottom: [47,16,3,4], right: [40,20,4,12], left: [47,20,4,12] }
+      } : {
+        id: 'rightArm', w: 4, h: 12, d: 4, pivot: [-6, -1, 0], pos: [-6, -6, 0],
+        uv: { front: [44,20,4,12], back: [52,20,4,12], top: [44,16,4,4], bottom: [48,16,4,4], right: [40,20,4,12], left: [48,20,4,12] }
+      },
       // Right sleeve (overlay)
-      { id: 'rightSleeve', w: 4, h: 12, d: 4, pivot: [-6, -1, 0], pos: [-6, -6, 0], expand: 0.4,
-        uv: { front: [44,36,4,12], back: [52,36,4,12], top: [44,32,4,4], bottom: [48,32,4,4], right: [40,36,4,12], left: [48,36,4,12] } },
+      isSlim ? {
+        id: 'rightSleeve', w: 3, h: 12, d: 4, pivot: [-5.5, -1, 0], pos: [-5.5, -6, 0], expand: 0.4,
+        uv: { front: [44,36,3,12], back: [51,36,3,12], top: [44,32,3,4], bottom: [47,32,3,4], right: [40,36,4,12], left: [47,36,4,12] }
+      } : {
+        id: 'rightSleeve', w: 4, h: 12, d: 4, pivot: [-6, -1, 0], pos: [-6, -6, 0], expand: 0.4,
+        uv: { front: [44,36,4,12], back: [52,36,4,12], top: [44,32,4,4], bottom: [48,32,4,4], right: [40,36,4,12], left: [48,36,4,12] }
+      },
 
-      // Left arm: 4x12x4, pivot (6, -1, 0), pos (6, -6, 0)
-      { id: 'leftArm', w: 4, h: 12, d: 4, pivot: [6, -1, 0], pos: [6, -6, 0],
-        uv: { front: [36,52,4,12], back: [44,52,4,12], top: [36,48,4,4], bottom: [40,48,4,4], right: [32,52,4,12], left: [40,52,4,12] } },
+      // Left arm: 4x12x4 (Classic) or 3x12x4 (Slim)
+      isSlim ? {
+        id: 'leftArm', w: 3, h: 12, d: 4, pivot: [5.5, -1, 0], pos: [5.5, -6, 0],
+        uv: { front: [36,52,3,12], back: [43,52,3,12], top: [36,48,3,4], bottom: [39,48,3,4], right: [32,52,4,12], left: [39,52,4,12] }
+      } : {
+        id: 'leftArm', w: 4, h: 12, d: 4, pivot: [6, -1, 0], pos: [6, -6, 0],
+        uv: { front: [36,52,4,12], back: [44,52,4,12], top: [36,48,4,4], bottom: [40,48,4,4], right: [32,52,4,12], left: [40,52,4,12] }
+      },
       // Left sleeve (overlay)
-      { id: 'leftSleeve', w: 4, h: 12, d: 4, pivot: [6, -1, 0], pos: [6, -6, 0], expand: 0.4,
-        uv: { front: [52,52,4,12], back: [60,52,4,12], top: [52,48,4,4], bottom: [56,48,4,4], right: [48,52,4,12], left: [56,52,4,12] } },
+      isSlim ? {
+        id: 'leftSleeve', w: 3, h: 12, d: 4, pivot: [5.5, -1, 0], pos: [5.5, -6, 0], expand: 0.4,
+        uv: { front: [52,52,3,12], back: [59,52,3,12], top: [52,48,3,4], bottom: [55,48,3,4], right: [48,52,4,12], left: [55,52,4,12] }
+      } : {
+        id: 'leftSleeve', w: 4, h: 12, d: 4, pivot: [6, -1, 0], pos: [6, -6, 0], expand: 0.4,
+        uv: { front: [52,52,4,12], back: [60,52,4,12], top: [52,48,4,4], bottom: [56,48,4,4], right: [48,52,4,12], left: [56,52,4,12] }
+      },
 
       // Right leg: 4x12x4, pivot (-2, -12, 0), pos (-2, -18, 0)
       { id: 'rightLeg', w: 4, h: 12, d: 4, pivot: [-2, -12, 0], pos: [-2, -18, 0],
@@ -520,8 +564,9 @@ export class SkinRenderer {
       };
     });
 
-    // Pre-create 3D cosmetic meshes
-    this.cosmeticMeshes = {
+    if (!this.cosmeticMeshes) {
+      // Pre-create 3D cosmetic meshes
+      this.cosmeticMeshes = {
       // Angel Wings: hinge at (0, 0, 0), extends +X
       angelBone1: buildBoxExtents(gl, 0, 7.5, 0, 2.8, -0.6, 0.6),
       angelBone2: buildBoxExtents(gl, 7.0, 14.0, -3.5, 2.2, -0.5, 0.5),
@@ -553,59 +598,62 @@ export class SkinRenderer {
       ghostBody: buildBoxMesh(gl, 2.6, 2.6, 2.6),
       ghostTail: buildBoxMesh(gl, 1.6, 1.8, 1.6)
     };
+    }
 
-    // Pre-create Chibi Mini-Player for Shoulder Pet (Self skin or Custom Player skin)
-    const miniParts = [
-      { id: 'miniHead', w: 4.6, h: 4.6, d: 4.6, pivot: [0, 0, 0], pos: [0, 3.2, 0],
-        uv: { front: [8,8,8,8], back: [24,8,8,8], top: [8,0,8,8], bottom: [16,0,8,8], right: [0,8,8,8], left: [16,8,8,8] } },
-      { id: 'miniHat', w: 4.6, h: 4.6, d: 4.6, pivot: [0, 0, 0], pos: [0, 3.2, 0], expand: 0.32,
-        uv: { front: [40,8,8,8], back: [56,8,8,8], top: [40,0,8,8], bottom: [48,0,8,8], right: [32,8,8,8], left: [48,8,8,8] } },
+    if (!this.miniMeshes) {
+      // Pre-create Chibi Mini-Player for Shoulder Pet (Self skin or Custom Player skin)
+      const miniParts = [
+        { id: 'miniHead', w: 4.6, h: 4.6, d: 4.6, pivot: [0, 0, 0], pos: [0, 3.2, 0],
+          uv: { front: [8,8,8,8], back: [24,8,8,8], top: [8,0,8,8], bottom: [16,0,8,8], right: [0,8,8,8], left: [16,8,8,8] } },
+        { id: 'miniHat', w: 4.6, h: 4.6, d: 4.6, pivot: [0, 0, 0], pos: [0, 3.2, 0], expand: 0.32,
+          uv: { front: [40,8,8,8], back: [56,8,8,8], top: [40,0,8,8], bottom: [48,0,8,8], right: [32,8,8,8], left: [48,8,8,8] } },
 
-      { id: 'miniTorso', w: 3.8, h: 4.8, d: 2.2, pivot: [0, 0, 0], pos: [0, -1.6, 0],
-        uv: { front: [20,20,8,12], back: [32,20,8,12], top: [20,16,8,4], bottom: [28,16,8,4], right: [16,20,4,12], left: [28,20,4,12] } },
-      { id: 'miniJacket', w: 3.8, h: 4.8, d: 2.2, pivot: [0, 0, 0], pos: [0, -1.6, 0], expand: 0.26,
-        uv: { front: [20,36,8,12], back: [32,36,8,12], top: [20,32,8,4], bottom: [28,32,8,4], right: [16,36,4,12], left: [28,36,4,12] } },
+        { id: 'miniTorso', w: 3.8, h: 4.8, d: 2.2, pivot: [0, 0, 0], pos: [0, -1.6, 0],
+          uv: { front: [20,20,8,12], back: [32,20,8,12], top: [20,16,8,4], bottom: [28,16,8,4], right: [16,20,4,12], left: [28,20,4,12] } },
+        { id: 'miniJacket', w: 3.8, h: 4.8, d: 2.2, pivot: [0, 0, 0], pos: [0, -1.6, 0], expand: 0.26,
+          uv: { front: [20,36,8,12], back: [32,36,8,12], top: [20,32,8,4], bottom: [28,32,8,4], right: [16,36,4,12], left: [28,36,4,12] } },
 
-      { id: 'miniRightArm', w: 1.8, h: 4.5, d: 1.8, pivot: [-2.6, 0.4, 0], pos: [-2.6, -1.6, 0],
-        uv: { front: [44,20,4,12], back: [52,20,4,12], top: [44,16,4,4], bottom: [48,16,4,4], right: [40,20,4,12], left: [48,20,4,12] } },
-      { id: 'miniRightSleeve', w: 1.8, h: 4.5, d: 1.8, pivot: [-2.6, 0.4, 0], pos: [-2.6, -1.6, 0], expand: 0.2,
-        uv: { front: [44,36,4,12], back: [52,36,4,12], top: [44,32,4,4], bottom: [48,32,4,4], right: [40,36,4,12], left: [48,36,4,12] } },
+        { id: 'miniRightArm', w: 1.8, h: 4.5, d: 1.8, pivot: [-2.6, 0.4, 0], pos: [-2.6, -1.6, 0],
+          uv: { front: [44,20,4,12], back: [52,20,4,12], top: [44,16,4,4], bottom: [48,16,4,4], right: [40,20,4,12], left: [48,20,4,12] } },
+        { id: 'miniRightSleeve', w: 1.8, h: 4.5, d: 1.8, pivot: [-2.6, 0.4, 0], pos: [-2.6, -1.6, 0], expand: 0.2,
+          uv: { front: [44,36,4,12], back: [52,36,4,12], top: [44,32,4,4], bottom: [48,32,4,4], right: [40,36,4,12], left: [48,36,4,12] } },
 
-      { id: 'miniLeftArm', w: 1.8, h: 4.5, d: 1.8, pivot: [2.6, 0.4, 0], pos: [2.6, -1.6, 0],
-        uv: { front: [36,52,4,12], back: [44,52,4,12], top: [36,48,4,4], bottom: [40,48,4,4], right: [32,52,4,12], left: [40,52,4,12] } },
-      { id: 'miniLeftSleeve', w: 1.8, h: 4.5, d: 1.8, pivot: [2.6, 0.4, 0], pos: [2.6, -1.6, 0], expand: 0.2,
-        uv: { front: [52,52,4,12], back: [60,52,4,12], top: [52,48,4,4], bottom: [56,48,4,4], right: [48,52,4,12], left: [56,52,4,12] } },
+        { id: 'miniLeftArm', w: 1.8, h: 4.5, d: 1.8, pivot: [2.6, 0.4, 0], pos: [2.6, -1.6, 0],
+          uv: { front: [36,52,4,12], back: [44,52,4,12], top: [36,48,4,4], bottom: [40,48,4,4], right: [32,52,4,12], left: [40,52,4,12] } },
+        { id: 'miniLeftSleeve', w: 1.8, h: 4.5, d: 1.8, pivot: [2.6, 0.4, 0], pos: [2.6, -1.6, 0], expand: 0.2,
+          uv: { front: [52,52,4,12], back: [60,52,4,12], top: [52,48,4,4], bottom: [56,48,4,4], right: [48,52,4,12], left: [56,52,4,12] } },
 
-      { id: 'miniRightLeg', w: 1.8, h: 4.5, d: 1.8, pivot: [-0.9, -3.9, 0], pos: [-0.9, -6.1, 0],
-        uv: { front: [4,20,4,12], back: [12,20,4,12], top: [4,16,4,4], bottom: [8,16,4,4], right: [0,20,4,12], left: [8,20,4,12] } },
-      { id: 'miniRightPant', w: 1.8, h: 4.5, d: 1.8, pivot: [-0.9, -3.9, 0], pos: [-0.9, -6.1, 0], expand: 0.2,
-        uv: { front: [4,36,4,12], back: [12,36,4,12], top: [4,32,4,4], bottom: [8,32,4,4], right: [0,36,4,12], left: [8,36,4,12] } },
+        { id: 'miniRightLeg', w: 1.8, h: 4.5, d: 1.8, pivot: [-0.9, -3.9, 0], pos: [-0.9, -6.1, 0],
+          uv: { front: [4,20,4,12], back: [12,20,4,12], top: [4,16,4,4], bottom: [8,16,4,4], right: [0,20,4,12], left: [8,20,4,12] } },
+        { id: 'miniRightPant', w: 1.8, h: 4.5, d: 1.8, pivot: [-0.9, -3.9, 0], pos: [-0.9, -6.1, 0], expand: 0.2,
+          uv: { front: [4,36,4,12], back: [12,36,4,12], top: [4,32,4,4], bottom: [8,32,4,4], right: [0,36,4,12], left: [8,36,4,12] } },
 
-      { id: 'miniLeftLeg', w: 1.8, h: 4.5, d: 1.8, pivot: [0.9, -3.9, 0], pos: [0.9, -6.1, 0],
-        uv: { front: [20,52,4,12], back: [28,52,4,12], top: [20,48,4,4], bottom: [24,48,4,4], right: [16,52,4,12], left: [24,52,4,12] } },
-      { id: 'miniLeftPant', w: 1.8, h: 4.5, d: 1.8, pivot: [0.9, -3.9, 0], pos: [0.9, -6.1, 0], expand: 0.2,
-        uv: { front: [4,52,4,12], back: [12,52,4,12], top: [4,48,4,4], bottom: [8,48,4,4], right: [0,52,4,12], left: [8,52,4,12] } }
-    ];
+        { id: 'miniLeftLeg', w: 1.8, h: 4.5, d: 1.8, pivot: [0.9, -3.9, 0], pos: [0.9, -6.1, 0],
+          uv: { front: [20,52,4,12], back: [28,52,4,12], top: [20,48,4,4], bottom: [24,48,4,4], right: [16,52,4,12], left: [24,52,4,12] } },
+        { id: 'miniLeftPant', w: 1.8, h: 4.5, d: 1.8, pivot: [0.9, -3.9, 0], pos: [0.9, -6.1, 0], expand: 0.2,
+          uv: { front: [4,52,4,12], back: [12,52,4,12], top: [4,48,4,4], bottom: [8,48,4,4], right: [0,52,4,12], left: [8,52,4,12] } }
+      ];
 
-    this.miniMeshes = miniParts.map(part => {
-      const { vertices, indices } = buildBox(part.w, part.h, part.d, part.uv, part.expand || 0);
-      const vbo = gl.createBuffer();
-      gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
-      gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+      this.miniMeshes = miniParts.map(part => {
+        const { vertices, indices } = buildBox(part.w, part.h, part.d, part.uv, part.expand || 0);
+        const vbo = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+        gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
 
-      const ibo = gl.createBuffer();
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
-      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+        const ibo = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
 
-      return {
-        id: part.id,
-        vbo,
-        ibo,
-        count: indices.length,
-        pivot: part.pivot,
-        pos: part.pos
-      };
-    });
+        return {
+          id: part.id,
+          vbo,
+          ibo,
+          count: indices.length,
+          pivot: part.pivot,
+          pos: part.pos
+        };
+      });
+    }
   }
 
   loadDefaultSkin() {
@@ -1253,8 +1301,9 @@ let snapshotCanvas = null;
 let snapshotRenderer = null;
 const snapshotCache = new Map();
 
-export async function renderSkinSnapshot(skinTextureUrl) {
-  const cacheKey = skinTextureUrl || '__steve__';
+export async function renderSkinSnapshot(skinTextureUrl, variant = 'classic') {
+  const normVariant = variant === 'slim' ? 'slim' : 'classic';
+  const cacheKey = `${skinTextureUrl || '__steve__'}_${normVariant}`;
   if (snapshotCache.has(cacheKey)) {
     return snapshotCache.get(cacheKey);
   }
@@ -1263,10 +1312,13 @@ export async function renderSkinSnapshot(skinTextureUrl) {
     snapshotCanvas = document.createElement('canvas');
     snapshotCanvas.width = 190;
     snapshotCanvas.height = 270;
-    snapshotRenderer = new SkinRenderer(snapshotCanvas, { static: true, preserveDrawingBuffer: true });
+    snapshotRenderer = new SkinRenderer(snapshotCanvas, { static: true, preserveDrawingBuffer: true, variant: normVariant });
+  } else {
+    snapshotRenderer.setVariant(normVariant);
   }
 
   if (!skinTextureUrl || skinTextureUrl === '__steve__' || skinTextureUrl === 'assets/skins/steve.png') {
+    snapshotRenderer.setVariant(normVariant);
     snapshotRenderer.loadDefaultSkin();
     snapshotRenderer.render(0);
     try {
@@ -1282,6 +1334,7 @@ export async function renderSkinSnapshot(skinTextureUrl) {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
+      snapshotRenderer.setVariant(normVariant);
       snapshotRenderer.uploadTexture(img);
       snapshotRenderer.render(0);
       try {
@@ -1293,6 +1346,7 @@ export async function renderSkinSnapshot(skinTextureUrl) {
       }
     };
     img.onerror = () => {
+      snapshotRenderer.setVariant(normVariant);
       snapshotRenderer.loadDefaultSkin();
       snapshotRenderer.render(0);
       try {

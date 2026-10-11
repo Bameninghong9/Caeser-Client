@@ -197,6 +197,21 @@ footer{display:none!important}
 .skin-model-pill.active .skin-model-pill-text strong{color:var(--accent)}
 .skin-model-pill-text small{font-size:10px;color:#8d98ab}
 
+/* Skin Model Preview in Edit Dialog */
+.skin-dialog-preview-wrap{margin-top:16px;display:flex;flex-direction:column;gap:8px}
+.skin-dialog-preview-header{display:flex;justify-content:space-between;align-items:center}
+.skin-dialog-preview-header .field-label{font-size:11px;font-weight:700;color:#9da7bb;letter-spacing:0.4px;text-transform:uppercase}
+.skin-dialog-preview-hint{font-size:10px;color:#7e8b9f}
+.skin-dialog-preview-card{position:relative;width:100%;height:250px;background:radial-gradient(ellipse at 50% 35%,rgba(38,46,72,0.4) 0%,rgba(13,16,26,0.92) 100%);border:1px solid rgba(255,255,255,0.08);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,0.05),0 8px 24px rgba(0,0,0,0.35)}
+#rename-skin-preview-canvas{width:210px;height:240px;display:block;cursor:grab;touch-action:none}
+#rename-skin-preview-canvas:active{cursor:grabbing}
+.skin-dialog-preview-badge{position:absolute;bottom:10px;display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;letter-spacing:0.3px;padding:3px 10px;border-radius:12px;background:rgba(15,18,30,0.85);border:1px solid rgba(255,255,255,0.12);color:#ffffff;backdrop-filter:blur(8px);transition:all .2s ease}
+.skin-dialog-preview-badge .preview-badge-dot{width:6px;height:6px;border-radius:50%;background:var(--accent,#00d2b4);box-shadow:0 0 8px var(--accent,#00d2b4)}
+.skin-dialog-preview-badge.slim{border-color:rgba(56,189,248,0.4);color:#38bdf8}
+.skin-dialog-preview-badge.slim .preview-badge-dot{background:#38bdf8;box-shadow:0 0 8px #38bdf8}
+.skin-dialog-preview-badge.classic{border-color:rgba(168,85,247,0.4);color:#c084fc}
+.skin-dialog-preview-badge.classic .preview-badge-dot{background:#a855f7;box-shadow:0 0 8px #a855f7}
+
 /* Skins Page Subnav */
 .skins-nav-bar{display:flex;gap:10px;margin-bottom:20px;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:12px}
 .skins-nav-tab{display:inline-flex;align-items:center;gap:9px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:9px 18px;color:#a89fb3;font-size:12px;font-weight:600;cursor:pointer;transition:all .18s ease}
