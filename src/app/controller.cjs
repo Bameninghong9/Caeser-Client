@@ -114,10 +114,118 @@ class Controller {
     await this.saveSettings();
     return this.state();
   }
-  async selectSkin(id) {
+  detectSkinVariant(dataUrlOrBuffer) {
+    let buf = dataUrlOrBuffer;
+    if (typeof dataUrlOrBuffer === 'string') {
+      const comma = dataUrlOrBuffer.indexOf(',');
+      const b64 = comma >= 0 ? dataUrlOrBuffer.slice(comma + 1) : dataUrlOrBuffer;
+      buf = Buffer.from(b64, 'base64');
+    }
+    if (!Buffer.isBuffer(buf) || buf.length < 100) return 'classic';
+    try {
+      const { nativeImage } = require('electron');
+      const img = nativeImage.createFromBuffer(buf);
+      const size = img.getSize();
+      if (size.width === 64 && size.height === 64) {
+        const bmp = img.toBitmap();
+        const a1 = bmp[(20 * 64 + 54) * 4 + 3];
+        const a2 = bmp[(20 * 64 + 55) * 4 + 3];
+        if (a1 === 0 && a2 === 0) return 'slim';
+      }
+    } catch {}
+    return 'classic';
+  }
+  async uploadSkinToAccount(id, variant) {
+    let account = this.accounts.find(a => a.id === this.settings.activeAccount);
+    if (!account) {
+      return { ok: false, localOnly: true, error: 'Kein aktives Microsoft-Konto angemeldet. Der Skin ist nur lokal aktiv.' };
+    }
+    try {
+      account = await auth.refresh(account);
+      await this.updateAccount(account);
+    } catch (err) {
+      return { ok: false, error: `Microsoft-Token konnte nicht aktualisiert werden: ${err.message}` };
+    }
+
+    if (id === 'steve') {
+      try {
+        const res = await fetch('https://api.minecraftservices.com/minecraft/profile/skins/active', {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${account.accessToken}` }
+        });
+        if (!res.ok && res.status !== 404) {
+          const txt = await res.text().catch(() => '');
+          return { ok: false, error: `Mojang-Fehler (${res.status}): ${txt}` };
+        }
+        account.skinUrl = '';
+        await this.updateAccount(account);
+        return { ok: true, reset: true };
+      } catch (err) {
+        return { ok: false, error: err.message };
+      }
+    }
+
+    if (id === 'account') {
+      return { ok: true, note: 'Standard-Account-Skin aktiv.' };
+    }
+
+    const skin = this.skins.find(s => s.id === id);
+    if (!skin || !skin.data) {
+      return { ok: false, error: 'Skin nicht in der Skin-Bibliothek gefunden.' };
+    }
+
+    const comma = skin.data.indexOf(',');
+    const b64 = comma >= 0 ? skin.data.slice(comma + 1) : skin.data;
+    const buffer = Buffer.from(b64, 'base64');
+
+    const chosenVariant = (variant === 'slim' || variant === 'classic') ? variant : this.detectSkinVariant(buffer);
+
+    const formData = new FormData();
+    formData.append('variant', chosenVariant);
+    formData.append('file', new Blob([buffer], { type: 'image/png' }), 'skin.png');
+
+    try {
+      const res = await fetch('https://api.minecraftservices.com/minecraft/profile/skins', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${account.accessToken}`
+        },
+        body: formData
+      });
+
+      if (!res.ok) {
+        let errDetail = '';
+        try {
+          const j = await res.json();
+          errDetail = j.errorMessage || j.error || JSON.stringify(j);
+        } catch {
+          errDetail = await res.text().catch(() => '');
+        }
+        return { ok: false, error: `Mojang API-Fehler (${res.status}): ${errDetail || res.statusText}` };
+      }
+
+      const profile = await res.json().catch(() => null);
+      const activeUrl = profile?.skins?.find(s => s.state === 'ACTIVE')?.url;
+      if (activeUrl) {
+        account.skinUrl = activeUrl;
+        await this.updateAccount(account);
+      }
+      return { ok: true, uploaded: true, variant: chosenVariant, skinUrl: activeUrl };
+    } catch (err) {
+      return { ok: false, error: `Verbindungsfehler zu Mojang: ${err.message}` };
+    }
+  }
+  async selectSkin(id, variant) {
     this.settings.activeSkinId = id;
     await this.saveSettings();
-    return this.state();
+    let uploadResult = null;
+    try {
+      uploadResult = await this.uploadSkinToAccount(id, variant);
+    } catch (e) {
+      uploadResult = { ok: false, error: e.message };
+    }
+    const state = this.state();
+    return { ...state, uploadResult };
   }
   async fetchPlayerSkin(name) {
     const clean = (name || '').trim();
@@ -326,6 +434,9 @@ class Controller {
       account = await auth.refresh(account); await this.updateAccount(account);
       const prepared = await launcher.prepare({ root: this.root, ...options, resources: this.resources, report });
       account = await auth.refresh(account); await this.updateAccount(account);
+      if (this.settings.activeSkinId && this.settings.activeSkinId !== 'account') {
+        await this.uploadSkinToAccount(this.settings.activeSkinId).catch(() => null);
+      }
       const child = launcher.start(prepared, account, options.memoryMb);
       this.games.add(child);
       this.game = child;

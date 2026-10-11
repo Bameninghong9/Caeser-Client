@@ -28,7 +28,14 @@ function register(controller, win, pageURL, logManager) {
   handle('skin-add', input => controller.addSkin(input));
   handle('skin-remove', id => controller.removeSkin(id));
   handle('skin-rename', input => controller.renameSkin(input.id, input.name));
-  handle('skin-select', id => controller.selectSkin(id));
+  handle('skin-select', input => {
+    if (input && typeof input === 'object') return controller.selectSkin(input.id, input.variant);
+    return controller.selectSkin(input);
+  });
+  handle('skin-upload-account', input => {
+    if (input && typeof input === 'object') return controller.uploadSkinToAccount(input.id, input.variant);
+    return controller.uploadSkinToAccount(input);
+  });
   handle('player-skin-get', name => controller.fetchPlayerSkin(name));
   handle('skin-pick-file', async () => {
     const result = await dialog.showOpenDialog(win, {

@@ -15,6 +15,38 @@ function openRenameDialog(id, currentName) {
   if (dialog) dialog.showModal();
 }
 
+export async function detectSkinVariant(textureSrc) {
+  if (!textureSrc) return 'classic';
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        if (img.width !== 64 || img.height !== 64) {
+          resolve('classic');
+          return;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const p1 = ctx.getImageData(54, 20, 1, 1).data;
+        const p2 = ctx.getImageData(55, 20, 1, 1).data;
+        if (p1[3] === 0 && p2[3] === 0) {
+          resolve('slim');
+        } else {
+          resolve('classic');
+        }
+      } catch {
+        resolve('classic');
+      }
+    };
+    img.onerror = () => resolve('classic');
+    img.src = textureSrc;
+  });
+}
+
 function createSkinWindowCard({ id, name, subtitle, isActive, canDelete, canRename, skinTexture }) {
   const card = document.createElement('div');
   card.className = 'skin-card skin-window-card' + (isActive ? ' active' : '');
@@ -42,7 +74,7 @@ function createSkinWindowCard({ id, name, subtitle, isActive, canDelete, canRena
     }
   });
 
-  // Top right actions: Pencil (rename) & Trash (delete)
+  // Top right actions: Pencil (rename), Cloud (sync to Mojang), & Trash (delete)
   const actions = document.createElement('div');
   actions.className = 'skin-window-actions';
 
@@ -58,6 +90,37 @@ function createSkinWindowCard({ id, name, subtitle, isActive, canDelete, canRena
       openRenameDialog(id, name);
     };
     actions.append(renameBtn);
+  }
+
+  if (id !== 'account') {
+    const uploadBtn = document.createElement('button');
+    uploadBtn.type = 'button';
+    uploadBtn.className = 'skin-action-btn upload-skin';
+    uploadBtn.title = 'Auf Minecraft-Account anwenden (für alle Spieler sichtbar)';
+    uploadBtn.setAttribute('aria-label', 'Auf Minecraft-Account anwenden');
+    uploadBtn.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/><path d="m12 13-3-3m0 0-3 3m3-3v8"/></svg>`;
+    uploadBtn.onclick = (e) => {
+      e.stopPropagation();
+      action(async () => {
+        uploadBtn.disabled = true;
+        uploadBtn.style.opacity = '0.5';
+        toast('Skin wird bei Mojang für deinen Account hochgeladen...', false);
+        const variant = await detectSkinVariant(skinTexture);
+        const res = await api.uploadSkinToAccount(id, variant);
+        uploadBtn.disabled = false;
+        uploadBtn.style.opacity = '';
+        if (res?.uploaded) {
+          toast(`✓ "${name}" ist jetzt offiziell bei Mojang aktiv & für alle Spieler sichtbar!`);
+        } else if (res?.reset) {
+          toast('✓ Skin bei Mojang auf Standard zurückgesetzt.');
+        } else if (res?.error) {
+          toast(res.error, true);
+        } else {
+          toast(`Skin bei Mojang aktualisiert.`);
+        }
+      });
+    };
+    actions.append(uploadBtn);
   }
 
   if (canDelete) {
@@ -100,11 +163,22 @@ function createSkinWindowCard({ id, name, subtitle, isActive, canDelete, canRena
   info.append(nameEl);
   card.append(preview, info);
 
-  // Click on card selects it immediately
+  // Click on card selects it immediately & syncs with Mojang
   card.onclick = () => {
     action(async () => {
-      update(await api.selectSkin(id));
-      toast(`${name} ausgewählt.`);
+      toast('Skin wird ausgewählt und synchronisiert...', false);
+      const variant = await detectSkinVariant(skinTexture);
+      const res = await api.selectSkin(id, variant);
+      update(res);
+      if (res?.uploadResult?.uploaded) {
+        toast(`✓ ${name} ausgewählt & offiziell auf Minecraft-Account übertragen (für alle sichtbar)!`);
+      } else if (res?.uploadResult?.reset) {
+        toast('✓ Skin auf Standard zurückgesetzt.');
+      } else if (res?.uploadResult?.error) {
+        toast(`${name} lokal aktiv. (${res.uploadResult.error})`);
+      } else {
+        toast(`${name} ausgewählt.`);
+      }
     });
   };
 
