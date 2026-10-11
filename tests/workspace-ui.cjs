@@ -34,8 +34,10 @@ const assert=require('node:assert/strict');
   const state=await page.evaluate(()=>window.caeser.state());const p=state.profiles.find(p=>p.name==='Fabric 1.21.6');
   const details=await page.evaluate(id=>window.caeser.profileDetails(id),p.id);
   assert.ok(details.mods.length>=1);assert.ok(details.mods.every(m=>m.gameVersion==='1.21.6'&&m.loader==='fabric'));
-  await page.locator('[data-source="curseforge"]').click();
-  await page.locator('.mod-result').first().waitFor({timeout:60000});
+  // CurseForge nur, wenn der Build einen Zugang mitbringt; sonst deaktiviert mit Hinweis
+  const cfTab=page.locator('[data-source="curseforge"]');
+  if(state.curseforgeAvailable){await cfTab.click();await page.locator('.mod-result').first().waitFor({timeout:60000});}
+  else{assert.equal(await cfTab.isDisabled(),true);assert.equal(await cfTab.getAttribute('title'),'In dieser Version nicht verfügbar');}
   await page.locator('[data-close="mods-drawer"]').click();
   assert.equal(await page.locator('.installed-mod').count(),details.mods.length);
   const modWidth = await page.locator('.installed-mod').first().evaluate(el => el.offsetWidth);
@@ -60,6 +62,8 @@ const assert=require('node:assert/strict');
   // Verify settings categories and themes
   await page.locator('[data-page="settings"]').click();
   assert.equal(await page.locator('.settings-nav-tab').count(), 2);
+  // Kein CurseForge-Schlüssel-Bereich mehr in den Einstellungen
+  assert.equal(await page.locator('#mod-settings, #curseforge-key, #save-curseforge, #remove-curseforge, #open-curseforge-console, #curseforge-state').count(), 0);
   await page.locator('[data-settings-category="themes"]').click();
   assert.equal(await page.locator('#cat-themes').isVisible(), true);
   assert.equal(await page.locator('#cat-general').isVisible(), false);
@@ -131,9 +135,12 @@ const assert=require('node:assert/strict');
 
   // Add a sample custom skin to verify window card actions (pencil, trash, select)
   await page.evaluate(async () => {
+    // Gültiges 64x64-PNG erzeugen (addSkin prüft das Bild mit nativeImage)
+    const canvas = document.createElement('canvas'); canvas.width = 64; canvas.height = 64;
+    const ctx = canvas.getContext('2d'); ctx.fillStyle = '#7a4a2a'; ctx.fillRect(0, 0, 64, 64);
     const s = await window.caeser.addSkin({
       name: '2026-07-13_01.20',
-      data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAT0lEQVR42u3BAQEAAACAkP6v7ggKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOA1wEAAAe352X0AAAAASUVORK5CYII='
+      data: canvas.toDataURL('image/png')
     });
     window.__update(s);
   });

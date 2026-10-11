@@ -117,11 +117,20 @@ const assert = require('node:assert/strict');
     assert.equal(await page.evaluate(() => document.querySelectorAll('img[src="x"]').length), 0);
     await page.evaluate(async id => window.__update(await window.caeser.removeProfile(id)), evilId);
     await page.evaluate(async id => window.__update(await window.caeser.selectProfile(id)), savedId);
-    // Mod-Quellen: ohne eigenen Schlüssel ist CurseForge als nicht eingerichtet markiert
-    assert.equal((await page.evaluate(() => window.caeser.state())).curseforgeConfigured, false);
+    // CurseForge: keine Schlüssel-Eingabe mehr; der Reiter im Mod-Browser folgt der Build-Verfügbarkeit
+    const cfState = await page.evaluate(() => window.caeser.state());
+    assert.equal(typeof cfState.curseforgeAvailable, 'boolean'); assert.equal('curseforgeConfigured' in cfState, false);
+    assert.equal(await page.evaluate(() => typeof window.caeser.setCurseForgeKey), 'undefined');
     await page.locator('[data-page="settings"]').click(); await page.locator('[data-settings-category="general"]').click();
-    assert.match(await page.locator('#curseforge-state').textContent(), /Kein Schlüssel/);
-    assert.equal(await page.locator('#open-curseforge-console').isVisible(), true);
+    assert.equal(await page.locator('#mod-settings, #curseforge-key, #save-curseforge, #open-curseforge-console').count(), 0);
+    await page.locator('[data-page="profiles"]').click();
+    await page.locator('.profile-card h3').filter({ hasText: 'Meine Survival-Welt' }).click();
+    await page.locator('#add-mods').click(); await page.waitForFunction(() => document.getElementById('mods-drawer').open);
+    const cfTab = page.locator('[data-source="curseforge"]');
+    assert.equal(await cfTab.isDisabled(), !cfState.curseforgeAvailable);
+    if (!cfState.curseforgeAvailable) assert.equal(await cfTab.getAttribute('title'), 'In dieser Version nicht verfügbar');
+    assert.equal(await page.locator('[data-source="modrinth"]').evaluate(el => el.classList.contains('selected')), true);
+    await page.locator('[data-close="mods-drawer"]').click(); await page.waitForFunction(() => !document.getElementById('mods-drawer').open);
     // Log-Fenster mit verschärfter CSP: Script läuft, keine CSP-Fehler, Suchtext erscheint wörtlich
     const logConsole = [];
     const logWinPromise = app.waitForEvent('window');
