@@ -33,12 +33,12 @@ async function directoryBytes(dir) {
   return bytes;
 }
 class Mods {
-  constructor({ root, profiles, getKey, assertIdle, report = () => {}, providers }) { Object.assign(this, { root, profiles, getKey, assertIdle, report, providers }); this.busy = false; }
+  constructor({ root, profiles, curseforgeAccess = () => null, assertIdle, report = () => {}, providers }) { Object.assign(this, { root, profiles, curseforgeAccess, assertIdle, report, providers }); this.busy = false; }
   profile(id) { const p = this.profiles.data.profiles.find(p => p.id === id); if (!p) throw new Error('Profil nicht gefunden.'); return p; }
   folder(profile) { return inside(path.join(this.root, 'instances'), instanceKey(profile)); }
   provider(source) {
     if (!['modrinth','curseforge'].includes(source)) throw new Error('Unbekannte Mod-Quelle.');
-    return this.providers?.[source] || (source === 'modrinth' ? new Modrinth() : new CurseForge(this.getKey()));
+    return this.providers?.[source] || (source === 'modrinth' ? new Modrinth() : new CurseForge(this.curseforgeAccess()));
   }
   async search({ profileId, source, query = '', offset = 0, type = 'mods' }) {
     const profile = this.profile(profileId);

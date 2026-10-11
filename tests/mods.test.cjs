@@ -15,7 +15,7 @@ async function fixture(t,versions){
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'caeser-mods-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
  const profile={id:randomUUID(),version:'1.21.6',mode:'fabric',name:'Test',memoryMb:4096};
  const provider={version:async(p,id,pinned)=>versions[pinned||id],project:async id=>({title:id,iconUrl:''})};
- const mods=new Mods({root,profiles:{data:{profiles:[profile]}},getKey:()=>'',assertIdle:()=>{},providers:{modrinth:provider}});
+ const mods=new Mods({root,profiles:{data:{profiles:[profile]}},assertIdle:()=>{},providers:{modrinth:provider}});
  t.mock.method(global,'fetch',async()=>new Response(payload));return{mods,profile};
 }
 test('Mods install exact versions with required dependencies, persist, and toggle',async t=>{
@@ -40,11 +40,11 @@ test('A checksum failure rolls back the whole dependency batch',async t=>{
  assert.equal((await mods.details(profile.id)).mods.length,0);
  assert.deepEqual((await fs.readdir(mods.folder(profile))).filter(n=>n.startsWith('.caeser-stage')),[]);
 });
-test('CurseForge requires key, sends exact filters, rejects wrong loader and restricted downloads',async t=>{
- const p={version:'1.21.6',mode:'fabric'};await assert.rejects(new CurseForge('').search(p,''),/API-Schlüssel/);
+test('CurseForge requires access, sends exact filters, rejects wrong loader and restricted downloads',async t=>{
+ const p={version:'1.21.6',mode:'fabric'};await assert.rejects(new CurseForge(null).search(p,''),/nicht verfügbar/);
  const calls=[];let mode='wrong';
  t.mock.method(global,'fetch',async(url,options)=>{calls.push({url:new URL(url),options});return Response.json({data:[{id:1,modId:2,fileName:'a.jar',displayName:'a',gameVersions:['1.21.6',mode==='wrong'?'Forge':'Fabric'],downloadUrl:null,hashes:[],dependencies:[]}],pagination:{totalCount:1}});});
- const cf=new CurseForge('test-key');await assert.rejects(cf.version(p,'2'),/Keine passende/);mode='restricted';await assert.rejects(cf.version(p,'2'),/keinen direkten/);
+ const cf=new CurseForge({mode:'key',baseUrl:'https://api.curseforge.com',key:'test-key'});await assert.rejects(cf.version(p,'2'),/Keine passende/);mode='restricted';await assert.rejects(cf.version(p,'2'),/keinen direkten/);
  assert.equal(calls[0].url.searchParams.get('gameVersion'),'1.21.6');assert.equal(calls[0].url.searchParams.get('modLoaderType'),'4');assert.equal(calls[0].options.headers['x-api-key'],'test-key');
 });
 test('Modrinth search fixes the selected version and loader',async t=>{
@@ -73,7 +73,7 @@ test('Mods checkUpdates detects newer version and update applies it',async t=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'caeser-mods-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
  const profile={id:randomUUID(),version:'1.21.6',mode:'fabric',name:'Test',memoryMb:4096};
  const provider={version:async()=>currentVer,project:async id=>({title:id,iconUrl:''})};
- const mods=new Mods({root,profiles:{data:{profiles:[profile]}},getKey:()=>'',assertIdle:()=>{},providers:{modrinth:provider}});
+ const mods=new Mods({root,profiles:{data:{profiles:[profile]}},assertIdle:()=>{},providers:{modrinth:provider}});
  t.mock.method(global,'fetch',async()=>new Response(payload));
  await mods.install({profileId:profile.id,source:'modrinth',projectId:'main'});
  let updates=await mods.checkUpdates(profile.id);assert.equal(updates.length,0);

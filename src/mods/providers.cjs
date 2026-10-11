@@ -43,11 +43,14 @@ function curseVersion(v) {
     dependencies: (v.dependencies || []).filter(d => d.relationType === 3).map(d => ({ projectId: String(d.modId) })) };
 }
 class CurseForge {
-  constructor(key = '') { this.key = key; }
+  // access kommt aus curseforgeAccess(): { mode: 'proxy', baseUrl } oder { mode: 'key', baseUrl, key } oder null
+  constructor(access = null) { this.access = access; }
   async request(route) {
-    if (!this.key) throw new Error('CurseForge benötigt einen API-Schlüssel. Hinterlege ihn unter Einstellungen → Mod-Quellen.');
-    try { return await json(`https://api.curseforge.com/v1${route}`, { headers: { 'x-api-key': this.key, Accept: 'application/json', 'User-Agent': USER_AGENT } }); }
-    catch (error) { if ([401,403].includes(error.status)) throw new Error('CurseForge hat den API-Schlüssel abgelehnt. Bitte unter Einstellungen prüfen.'); throw error; }
+    if (!this.access?.baseUrl) throw new Error('CurseForge ist in dieser Version nicht verfügbar. Modrinth funktioniert weiterhin.');
+    const headers = { Accept: 'application/json', 'User-Agent': USER_AGENT };
+    if (this.access.mode === 'key') headers['x-api-key'] = this.access.key; // im Proxy-Modus hängt der Server den Schlüssel an
+    try { return await json(`${this.access.baseUrl}/v1${route}`, { headers }); }
+    catch (error) { if ([401,403,429].includes(error.status)) throw new Error('CurseForge ist gerade nicht erreichbar. Bitte später erneut versuchen oder Modrinth verwenden.'); throw error; }
   }
   async search(profile, query, offset = 0, type = 'mods') {
     let params;

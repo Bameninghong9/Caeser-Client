@@ -13,6 +13,7 @@ const { createLogParser } = require('../game/log-parser.cjs');
 const { diagnoseCrash, executeAutoFix } = require('../game/crash-doctor.cjs');
 const { Wallpapers } = require('./wallpaper.cjs');
 const { LogStore } = require('../game/log-store.cjs');
+const { curseforgeAccess } = require('../mods/curseforge-config.cjs');
 const { redactLog, buildShareText, uploadToMclogs, localUsernames, MCLOGS_URL_PREFIX } = require('../shared/log-share.cjs');
 const { validateSkinDataUrl, validateSkinName, MAX_SKINS } = require('../shared/skins.cjs');
 const themes = ['Cyberpunk','Ultraviolet','Toxic','Inferno','Glacier','Bloodmoon','Aurora','Bubblegum','Limelight','Sunset','Electric','Nebula','Goldrush','Emerald','Plasma','Crimson'];
@@ -25,7 +26,8 @@ const PACKAGE_VERSION = require('../../package.json').version;
 const CAESER_DISCORD_ICON = 'https://cdn.discordapp.com/app-icons/1558499625999007914/8a6c22196782afd29a05440238daf206.png';
 
 class Controller {
-  constructor({ directory, encryption, resources, appVersion, emit, openBrowser, confirmShare, writeClipboard, openExternal }) {
+  constructor({ directory, encryption, resources, appVersion, emit, openBrowser, confirmShare, writeClipboard, openExternal, curseforgeAccess: access = curseforgeAccess }) {
+    this.curseforgeAccess = access; // Zugang allein aus der Build-Konfiguration (Tests können ihn ersetzen)
     this.store = new Store(directory, encryption); this.root = path.join(directory, 'minecraft');
     Object.assign(this, { resources, appVersion: appVersion || PACKAGE_VERSION, emit, openBrowser });
     // Log-Teilen: Bestätigungsdialog, Zwischenablage und Browser kommen aus bootstrap (ohne confirmShare kein Upload).
@@ -41,7 +43,7 @@ class Controller {
     this.screenshotThumbsCache = new Map();
     this.screenshotIndex = new Map(); this.screenshotSalt = crypto.randomBytes(32);
     this.discordRpc = new DiscordRpcClient();
-    this.mods = new Mods({root:this.root, profiles:this.profiles, getKey:()=>this.secrets.curseforgeKey || process.env.CAESER_CURSEFORGE_KEY || '',
+    this.mods = new Mods({root:this.root, profiles:this.profiles, curseforgeAccess:()=>this.curseforgeAccess(),
       assertIdle:()=>{if(this.busy) throw new Error('Ein Startvorgang läuft bereits.');},report:data=>this.emit('mod-progress',data)});
   }
   async load() {
@@ -74,7 +76,7 @@ class Controller {
   }
   state() { return { settings: this.settings, accounts: this.accounts.map(({ id, name }) => ({ id, name })), profiles: this.profiles.data.profiles,
     activeProfileId: this.profiles.data.activeId, maxMemoryMb: this.maxMemoryMb, root: this.root, busy: this.busy, running: !!this.game, appVersion: this.appVersion,
-    curseforgeConfigured: Boolean(this.secrets.curseforgeKey || process.env.CAESER_CURSEFORGE_KEY),
+    curseforgeAvailable: Boolean(this.curseforgeAccess()),
     skins: this.skins, activeSkinId: this.settings.activeSkinId || 'account',
     cosmetics: this.settings.cosmetics || DEFAULT_COSMETICS,
     wallpaper: this.wallpaper ? { name: this.wallpaper.name, type: this.wallpaper.type, opacity: this.settings.customWallpaper?.opacity ?? 40, blur: this.settings.customWallpaper?.blur ?? 0 } : null }; }
