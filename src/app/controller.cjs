@@ -1,10 +1,11 @@
 const path = require('node:path');
 const os = require('node:os');
+const crypto = require('node:crypto');
 const auth = require('../auth/microsoft.cjs');
 const launcher = require('../game/launcher.cjs');
 const { Store } = require('../data/store.cjs');
 const { Profiles, instanceKey, validateProfile } = require('../data/profiles.cjs');
-const { json } = require('../shared/net.cjs');
+const { json, inside } = require('../shared/net.cjs');
 const { Mods } = require('../mods/service.cjs');
 const { DEFAULT_CURSEFORGE_KEY } = require('../mods/providers.cjs');
 const { Session } = require('../game/session.cjs');
@@ -31,6 +32,7 @@ class Controller {
     this.logHistory = [];
     this.wallpaper = null;
     this.screenshotThumbsCache = new Map();
+    this.screenshotIndex = new Map(); this.screenshotSalt = crypto.randomBytes(32);
     this.discordRpc = new DiscordRpcClient();
     this.mods = new Mods({root:this.root, profiles:this.profiles, getKey:()=>this.secrets.curseforgeKey || process.env.CAESER_CURSEFORGE_KEY || DEFAULT_CURSEFORGE_KEY,
       assertIdle:()=>{if(this.busy) throw new Error('Ein Startvorgang läuft bereits.');},report:data=>this.emit('mod-progress',data)});
@@ -630,9 +632,8 @@ class Controller {
   async autoFixCrash(action) {
     return executeAutoFix(action, this);
   }
-  async getScreenshots() {
+  async screenshotDirs() {
     const fs = require('node:fs/promises');
-    const { nativeImage } = require('electron');
     const dirs = new Set();
     dirs.add(path.join(this.root, 'screenshots'));
     try {
@@ -657,18 +658,48 @@ class Controller {
     if (appData) {
       dirs.add(path.join(appData, '.minecraft', 'screenshots'));
     }
-
+    return [...dirs];
+  }
+  // Echte (per realpath aufgelöste) Screenshot-Ordner; nur Dateien direkt darin sind erlaubt.
+  async screenshotRoots() {
+    const fs = require('node:fs/promises');
+    const roots = new Set();
+    for (const dir of await this.screenshotDirs()) {
+      try { roots.add(await fs.realpath(dir)); } catch {}
+    }
+    return [...roots];
+  }
+  screenshotId(fullPath) {
+    return crypto.createHmac('sha256', this.screenshotSalt).update(fullPath).digest('base64url').slice(0, 32);
+  }
+  async resolveScreenshot(id) {
+    const fs = require('node:fs/promises');
+    const file = typeof id === 'string' ? this.screenshotIndex.get(id) : null;
+    if (!file) throw new Error('Screenshot nicht gefunden.');
+    let stat, real;
+    try { stat = await fs.lstat(file); real = await fs.realpath(file); }
+    catch (err) { throw Object.assign(new Error('Screenshot nicht gefunden.'), { code: err.code }); }
+    if (!stat.isFile() || !real.toLowerCase().endsWith('.png')) throw new Error('Ungültige Screenshot-Datei.');
+    const roots = await this.screenshotRoots();
+    if (!roots.some(root => { try { inside(root, real); return path.dirname(real) === root; } catch { return false; } })) throw new Error('Der Screenshot liegt außerhalb der erlaubten Ordner.');
+    return real;
+  }
+  async getScreenshots() {
+    const fs = require('node:fs/promises');
+    const { nativeImage } = require('electron');
     const screenshots = [];
-    const seenPaths = new Set();
+    const index = new Map();
 
-    for (const dir of dirs) {
+    for (const dir of await this.screenshotRoots()) {
       try {
-        const files = await fs.readdir(dir);
-        for (const file of files) {
-          if (!file.toLowerCase().endsWith('.png')) continue;
+        const files = await fs.readdir(dir, { withFileTypes: true });
+        for (const entry of files) {
+          const file = entry.name;
+          if (!entry.isFile() || !file.toLowerCase().endsWith('.png')) continue;
           const fullPath = path.join(dir, file);
-          if (seenPaths.has(fullPath)) continue;
-          seenPaths.add(fullPath);
+          const id = this.screenshotId(fullPath);
+          if (index.has(id)) continue;
+          index.set(id, fullPath);
 
           const stat = await fs.stat(fullPath);
           const cacheKey = `${fullPath}:${stat.mtimeMs}:${stat.size}`;
@@ -690,9 +721,8 @@ class Controller {
           }
 
           screenshots.push({
-            id: Buffer.from(fullPath).toString('base64url'),
+            id,
             name: file,
-            path: fullPath,
             size: stat.size,
             mtime: stat.mtimeMs,
             thumb: thumb || ''
@@ -701,15 +731,17 @@ class Controller {
       } catch {}
     }
 
+    this.screenshotIndex = index;
     screenshots.sort((a, b) => b.mtime - a.mtime);
     return screenshots;
   }
-  async getScreenshotFull(filePath) {
+  async getScreenshotFull(id) {
     const fs = require('node:fs/promises');
-    const buf = await fs.readFile(filePath);
+    const buf = await fs.readFile(await this.resolveScreenshot(id));
     return `data:image/png;base64,${buf.toString('base64')}`;
   }
-  async copyScreenshot(filePath) {
+  async copyScreenshot(id) {
+    const filePath = await this.resolveScreenshot(id);
     const { clipboard, nativeImage } = require('electron');
     try {
       const img = nativeImage.createFromPath(filePath);
@@ -793,14 +825,23 @@ class Controller {
       });
     });
   }
-  async openScreenshot(filePath) {
+  async openScreenshot(id) {
+    const filePath = await this.resolveScreenshot(id);
     const { shell } = require('electron');
     const err = await shell.openPath(filePath);
     if (err) throw new Error(err);
     return { ok: true };
   }
-  async deleteScreenshot(filePath) {
+  async deleteScreenshot(id) {
     const fs = require('node:fs/promises');
+    let filePath;
+    try {
+      filePath = await this.resolveScreenshot(id);
+    } catch (err) {
+      // Bereits gelöscht: wie bisher kein Fehler. Die ID verfällt beim nächsten getScreenshots().
+      if (err.code !== 'ENOENT') throw err;
+      return { ok: true };
+    }
     try {
       await fs.unlink(filePath);
     } catch (err) {
@@ -820,26 +861,35 @@ class Controller {
     const list = await this.getScreenshots();
     let deleted = 0;
     for (const item of list) {
+      let filePath;
+      try { filePath = await this.resolveScreenshot(item.id); } catch { continue; }
       try {
-        await fs.unlink(item.path);
+        await fs.unlink(filePath);
         deleted++;
       } catch (err) {
         if (err.code !== 'ENOENT') throw err;
       }
     }
+    this.screenshotIndex = new Map();
     if (this.screenshotThumbsCache) {
       this.screenshotThumbsCache.clear();
     }
     return { ok: true, count: deleted };
   }
-  async renameScreenshot(filePath, newName) {
+  async renameScreenshot(id, newName) {
     const fs = require('node:fs/promises');
-    let clean = (newName || '').trim();
+    const filePath = await this.resolveScreenshot(id);
+    let clean = (typeof newName === 'string' ? newName : '').trim();
     if (!clean) throw new Error('Ungültiger Name.');
     if (!clean.toLowerCase().endsWith('.png')) clean += '.png';
-    clean = clean.replace(/[<>:"/\\|?*]/g, '_');
+    clean = clean.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_');
+    const base = clean.slice(0, -4);
+    if (!base.trim() || /^\.+$/.test(base.trim())) throw new Error('Ungültiger Name.');
+    if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|\s|$)/i.test(clean)) throw new Error('Dieser Name ist unter Windows reserviert.');
+    if (clean.length > 120) throw new Error('Der Name darf höchstens 120 Zeichen lang sein.');
     const dir = path.dirname(filePath);
-    const target = path.join(dir, clean);
+    const target = inside(dir, clean);
+    if (path.dirname(target) !== dir) throw new Error('Ungültiger Name.');
     if (target !== filePath) {
       try {
         await fs.access(target);
@@ -858,7 +908,10 @@ class Controller {
         }
       }
     }
-    return { ok: true, path: target, name: clean };
+    const newId = this.screenshotId(target);
+    this.screenshotIndex.delete(id);
+    this.screenshotIndex.set(newId, target);
+    return { ok: true, id: newId, name: clean };
   }
   async openScreenshotsFolder() {
     const fs = require('node:fs/promises');

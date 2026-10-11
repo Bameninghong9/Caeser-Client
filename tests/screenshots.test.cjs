@@ -7,6 +7,9 @@ const { Controller } = require('../src/app/controller.cjs');
 
 test('Screenshots - discover, rename, delete, and deleteAll', async () => {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'caeser-screenshots-test-'));
+  // Echten %APPDATA%\.minecraft\screenshots-Ordner aus dem Test heraushalten
+  const appData = process.env.APPDATA;
+  process.env.APPDATA = path.join(tmpDir, 'appdata');
   const screenshotsDir = path.join(tmpDir, 'minecraft', 'screenshots');
   await fs.mkdir(screenshotsDir, { recursive: true });
 
@@ -20,41 +23,46 @@ test('Screenshots - discover, rename, delete, and deleteAll', async () => {
   await fs.writeFile(sample2, pngBytes);
 
   const controller = new Controller({ directory: tmpDir, resources: tmpDir, appVersion: '0.3.22', emit: () => {}, openBrowser: () => {} });
-  await controller.load();
+  try {
+    await controller.load();
 
-  // Discover screenshots (cached)
-  const found = await controller.getScreenshots();
-  assert.ok(found.some(s => s.name === id1));
-  assert.ok(found.some(s => s.name === id2));
+    // Discover screenshots (cached)
+    const found = await controller.getScreenshots();
+    assert.ok(found.some(s => s.name === id1));
+    assert.ok(found.some(s => s.name === id2));
+    assert.ok(found.every(s => !('path' in s)), 'Pfade werden nicht an die UI gegeben');
 
-  // Verify caching returns quickly
-  const found2 = await controller.getScreenshots();
-  assert.ok(found2.some(s => s.name === id1));
+    // IDs bleiben innerhalb einer Sitzung stabil
+    const found2 = await controller.getScreenshots();
+    assert.equal(found2.find(s => s.name === id1).id, found.find(s => s.name === id1).id);
 
-  // Rename screenshot
-  const renamedName = `renamed_${Date.now()}.png`;
-  const renameRes = await controller.renameScreenshot(sample1, renamedName);
-  assert.equal(renameRes.ok, true);
-  assert.equal(renameRes.name, renamedName);
+    // Rename screenshot
+    const renamedName = `renamed_${Date.now()}.png`;
+    const renameRes = await controller.renameScreenshot(found.find(s => s.name === id1).id, renamedName);
+    assert.equal(renameRes.ok, true);
+    assert.equal(renameRes.name, renamedName);
 
-  const afterRename = await controller.getScreenshots();
-  assert.ok(afterRename.some(s => s.name === renamedName));
-  assert.ok(!afterRename.some(s => s.name === id1));
+    const afterRename = await controller.getScreenshots();
+    assert.ok(afterRename.some(s => s.name === renamedName && s.id === renameRes.id));
+    assert.ok(!afterRename.some(s => s.name === id1));
 
-  // Delete single screenshot (and repeated delete should not throw ENOENT)
-  const deleteRes = await controller.deleteScreenshot(renameRes.path);
-  assert.equal(deleteRes.ok, true);
-  const deleteRes2 = await controller.deleteScreenshot(renameRes.path);
-  assert.equal(deleteRes2.ok, true);
+    // Delete single screenshot (and repeated delete should not throw ENOENT)
+    const deleteRes = await controller.deleteScreenshot(renameRes.id);
+    assert.equal(deleteRes.ok, true);
+    const deleteRes2 = await controller.deleteScreenshot(renameRes.id);
+    assert.equal(deleteRes2.ok, true);
 
-  const afterDelete = await controller.getScreenshots();
-  assert.ok(!afterDelete.some(s => s.name === renamedName));
+    const afterDelete = await controller.getScreenshots();
+    assert.ok(!afterDelete.some(s => s.name === renamedName));
 
-  // Delete all screenshots in this directory
-  await controller.deleteScreenshot(sample2);
-  const afterDeleteAll = await controller.getScreenshots();
-  assert.ok(!afterDeleteAll.some(s => s.name === id2));
-
-  controller.destroy();
-  await fs.rm(tmpDir, { recursive: true, force: true });
+    // Delete all screenshots
+    const all = await controller.deleteAllScreenshots();
+    assert.equal(all.count, 1);
+    const afterDeleteAll = await controller.getScreenshots();
+    assert.ok(!afterDeleteAll.some(s => s.name === id2));
+  } finally {
+    controller.destroy();
+    if (appData === undefined) delete process.env.APPDATA; else process.env.APPDATA = appData;
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
 });

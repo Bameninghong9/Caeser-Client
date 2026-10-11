@@ -2,7 +2,7 @@ import { $, api, action, toast, bytesLabel, showConfirmDialog } from './common.j
 import { t } from './i18n.js';
 
 let screenshotsList = [];
-let currentRenamePath = null;
+let currentRenameId = null;
 let currentLightboxItem = null;
 
 function formatDateTime(ts) {
@@ -29,8 +29,8 @@ export async function loadScreenshots() {
   }
 }
 
-function openRenameDialog(filePath, currentName) {
-  currentRenamePath = filePath;
+function openRenameDialog(id, currentName) {
+  currentRenameId = id;
   const dialog = $('rename-screenshot-dialog');
   const input = $('rename-screenshot-input');
   if (input) {
@@ -89,8 +89,8 @@ function updateLightboxNavButtons() {
 
 function navigateLightbox(direction) {
   if (!screenshotsList || screenshotsList.length <= 1) return;
-  const currentPath = currentLightboxItem?.path;
-  const currentIndex = screenshotsList.findIndex(s => s.path === currentPath);
+  const currentId = currentLightboxItem?.id;
+  const currentIndex = screenshotsList.findIndex(s => s.id === currentId);
   let nextIndex = 0;
   if (currentIndex !== -1) {
     nextIndex = (currentIndex + direction + screenshotsList.length) % screenshotsList.length;
@@ -114,8 +114,8 @@ async function openLightbox(item) {
   if (dialog && !dialog.open) dialog.showModal();
 
   try {
-    const fullData = await api.getScreenshotFull(item.path);
-    if (img && currentLightboxItem?.path === item.path) {
+    const fullData = await api.getScreenshotFull(item.id);
+    if (img && currentLightboxItem?.id === item.id) {
       img.src = fullData;
     }
   } catch (err) {
@@ -190,7 +190,7 @@ function renderGallery() {
     copyBtn.onclick = (e) => {
       e.stopPropagation();
       action(async () => {
-        await api.copyScreenshot(item.path);
+        await api.copyScreenshot(item.id);
         toast('Screenshot copied to Clipboard');
       });
     };
@@ -203,7 +203,7 @@ function renderGallery() {
     openBtn.onclick = (e) => {
       e.stopPropagation();
       action(async () => {
-        await api.openScreenshot(item.path);
+        await api.openScreenshot(item.id);
       });
     };
 
@@ -214,7 +214,7 @@ function renderGallery() {
     renameBtn.textContent = 'ʀᴇɴᴀᴍᴇ';
     renameBtn.onclick = (e) => {
       e.stopPropagation();
-      openRenameDialog(item.path, item.name);
+      openRenameDialog(item.id, item.name);
     };
 
     // Delete button
@@ -234,11 +234,11 @@ function renderGallery() {
           isDanger: true
         });
         if (!ok) return;
-        const targetPath = item.path;
-        screenshotsList = screenshotsList.filter(s => s.path !== targetPath);
+        const targetId = item.id;
+        screenshotsList = screenshotsList.filter(s => s.id !== targetId);
         updateGalleryCount();
         renderGallery();
-        await api.deleteScreenshot(targetPath);
+        await api.deleteScreenshot(targetId);
         toast('Screenshot deleted');
       });
     };
@@ -294,17 +294,18 @@ export function initGallery() {
       e.preventDefault();
       const input = $('rename-screenshot-input');
       const newName = input ? input.value.trim() : '';
-      if (!newName || !currentRenamePath) return;
+      if (!newName || !currentRenameId) return;
 
       action(async () => {
-        const res = await api.renameScreenshot(currentRenamePath, newName);
+        const res = await api.renameScreenshot(currentRenameId, newName);
         $('rename-screenshot-dialog')?.close();
-        if (res && res.path) {
-          const it = screenshotsList.find(s => s.path === currentRenamePath);
+        if (res && res.id) {
+          const it = screenshotsList.find(s => s.id === currentRenameId);
           if (it) {
             it.name = res.name;
-            it.path = res.path;
+            it.id = res.id;
           }
+          currentRenameId = res.id;
         }
         renderGallery();
         toast(t('screenshotRenamed', 'Screenshot umbenannt.'));
@@ -318,7 +319,7 @@ export function initGallery() {
     lbCopy.onclick = () => {
       if (!currentLightboxItem) return;
       action(async () => {
-        await api.copyScreenshot(currentLightboxItem.path);
+        await api.copyScreenshot(currentLightboxItem.id);
         toast('Screenshot copied to Clipboard');
       });
     };
@@ -328,7 +329,7 @@ export function initGallery() {
   if (lbOpen) {
     lbOpen.onclick = () => {
       if (!currentLightboxItem) return;
-      action(() => api.openScreenshot(currentLightboxItem.path));
+      action(() => api.openScreenshot(currentLightboxItem.id));
     };
   }
 
@@ -345,12 +346,12 @@ export function initGallery() {
           isDanger: true
         });
         if (!ok) return;
-        const targetPath = currentLightboxItem.path;
-        screenshotsList = screenshotsList.filter(s => s.path !== targetPath);
+        const targetId = currentLightboxItem.id;
+        screenshotsList = screenshotsList.filter(s => s.id !== targetId);
         updateGalleryCount();
         renderGallery();
         $('screenshot-lightbox-dialog')?.close();
-        await api.deleteScreenshot(targetPath);
+        await api.deleteScreenshot(targetId);
         toast('Screenshot deleted');
       });
     };
