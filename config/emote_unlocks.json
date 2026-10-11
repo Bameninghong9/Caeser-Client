@@ -7,7 +7,10 @@
   ],
   "default_unlocked": [
     "T_POSE",
-    "SIT"
+    "SIT",
+    "MINIME_HAND",
+    "MINIME_SIT",
+    "MINIME_HEAD"
   ],
   "players": {
     "Bameninghong": [
