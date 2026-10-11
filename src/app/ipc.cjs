@@ -47,13 +47,9 @@ function register(controller, win, pageURL, logManager) {
     const filePath = result.filePaths[0];
     const buffer = await fs.readFile(filePath);
     const { nativeImage } = require('electron');
-    const img = nativeImage.createFromBuffer(buffer);
-    const size = img.getSize();
-    if (size.width !== 64 || ![32, 64].includes(size.height)) {
-      throw new Error('Minecraft-Skins müssen 64x64 oder 64x32 Pixel groß sein.');
-    }
     const baseName = path.basename(filePath, path.extname(filePath));
-    const data = img.toDataURL();
+    // Größe, Format und Pixelmaße prüft addSkin über validateSkinDataUrl.
+    const data = nativeImage.createFromBuffer(buffer).toDataURL();
     return controller.addSkin({ name: baseName, data });
   });
   handle('profile-select', async id => { await controller.profiles.select(id); return controller.state(); });
@@ -89,17 +85,7 @@ function register(controller, win, pageURL, logManager) {
     });
     if (result.canceled || !result.filePaths.length) return null;
     const filePath = result.filePaths[0];
-    const ext = path.extname(filePath).toLowerCase().replace('.', '');
-    const buffer = await fs.readFile(filePath);
-    const isVideo = ['mp4', 'webm'].includes(ext);
-    const mimeType = isVideo ? (ext === 'mp4' ? 'video/mp4' : 'video/webm') : (ext === 'gif' ? 'image/gif' : (ext === 'png' ? 'image/png' : (ext === 'webp' ? 'image/webp' : 'image/jpeg')));
-    const data = `data:${mimeType};base64,${buffer.toString('base64')}`;
-    const baseName = path.basename(filePath);
-    return controller.setWallpaper({
-      data,
-      type: isVideo ? 'video' : 'image',
-      name: baseName
-    });
+    return controller.importWallpaper(filePath, path.basename(filePath));
   });
   handle('wallpaper-get', () => controller.getWallpaper());
   handle('wallpaper-set', input => controller.setWallpaper(input));

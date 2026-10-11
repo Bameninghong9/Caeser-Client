@@ -1,4 +1,4 @@
-const { app, safeStorage, dialog } = require('electron');
+const { app, safeStorage, dialog, protocol } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { Controller } = require('./controller.cjs');
@@ -6,7 +6,10 @@ const { createWindow } = require('./window.cjs');
 const { createLogWindowManager } = require('./log-window.cjs');
 const { register } = require('./ipc.cjs');
 const { openLoginWindow } = require('../auth/window.cjs');
+const { WALLPAPER_SCHEME } = require('./wallpaper.cjs');
 app.setName('Caeser Client');
+// Eigenes, eng begrenztes Schema nur für die aktuelle Hintergrunddatei (stream: true für Videos).
+protocol.registerSchemesAsPrivileged([{ scheme: WALLPAPER_SCHEME, privileges: { standard: true, secure: true, stream: true } }]);
 // Ensure Chromium and Windows aggressively throttle background rendering when other apps/games are running
 app.commandLine.appendSwitch('disable-renderer-backgrounding', 'false');
 if (process.env.CAESER_TEST_DATA) app.setPath('userData', process.env.CAESER_TEST_DATA);
@@ -23,6 +26,7 @@ else {
         if (logManager) logManager.handleEmit(name, data);
       } });
     await controller.load();
+    protocol.handle(WALLPAPER_SCHEME, request => controller.serveWallpaper(request));
     logManager = createLogWindowManager(controller);
     win = createWindow(controller, logManager);
     const page = path.join(__dirname, '../../ui/index.html'); register(controller, win, pathToFileURL(page).href, logManager); await win.loadFile(page);

@@ -76,14 +76,12 @@ const assert=require('node:assert/strict');
   await page.waitForFunction(()=>document.getElementById('atmosphere-layer').classList.contains('atmo-nebula'));
 
   // Test custom wallpaper upload and removal
+  const wallpaperFile = path.join(data, 'test-wallpaper.png');
+  await fs.writeFile(wallpaperFile, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
+  await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, wallpaperFile);
   await page.evaluate(async () => {
-    const res = await window.caeser.setWallpaper({
-      data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-      type: 'image',
-      name: 'test-wallpaper.png',
-      opacity: 60,
-      blur: 5
-    });
+    await window.caeser.pickWallpaperFile();
+    const res = await window.caeser.setWallpaper({ opacity: 60, blur: 5 });
     window.__update(res.state);
   });
   await page.waitForFunction(() => !document.getElementById('custom-wallpaper-layer').hidden);

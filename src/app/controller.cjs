@@ -12,6 +12,8 @@ const { Session } = require('../game/session.cjs');
 const { DiscordRpcClient } = require('../shared/discord-rpc.cjs');
 const { createLogParser } = require('../game/log-parser.cjs');
 const { diagnoseCrash, executeAutoFix } = require('../game/crash-doctor.cjs');
+const { Wallpapers } = require('./wallpaper.cjs');
+const { validateSkinDataUrl, validateSkinName, MAX_SKINS } = require('../shared/skins.cjs');
 const themes = ['Cyberpunk','Ultraviolet','Toxic','Inferno','Glacier','Bloodmoon','Aurora','Bubblegum','Limelight','Sunset','Electric','Nebula','Goldrush','Emerald','Plasma','Crimson'];
 const DEFAULT_COSMETICS = {
   wings: { type: 'none', color: '#a855f7' },
@@ -30,7 +32,7 @@ class Controller {
     this.accounts = []; this.busy = false; this.game = null; this.games = new Set(); this.instances = new Map(); this.loginController = null;
     this.secrets = {};
     this.logHistory = [];
-    this.wallpaper = null;
+    this.wallpaper = null; this.wallpapers = new Wallpapers(directory);
     this.screenshotThumbsCache = new Map();
     this.screenshotIndex = new Map(); this.screenshotSalt = crypto.randomBytes(32);
     this.discordRpc = new DiscordRpcClient();
@@ -43,7 +45,7 @@ class Controller {
     if (this.settings.atmosphere === 'aurora') this.settings.atmosphere = 'rain';
     if (!this.settings.cosmetics) this.settings.cosmetics = DEFAULT_COSMETICS;
     this.skins = await this.store.read('skins.json', []);
-    try { this.wallpaper = await this.store.read('wallpaper.json', null); } catch { this.wallpaper = null; }
+    this.wallpaper = await this.loadWallpaper();
     await this.profiles.load(this.settings);
     if (this.settings.discordRpc !== false) {
       this.discordRpc.setEnabled(true);
@@ -72,12 +74,13 @@ class Controller {
     cosmetics: this.settings.cosmetics || DEFAULT_COSMETICS,
     wallpaper: this.wallpaper ? { name: this.wallpaper.name, type: this.wallpaper.type, opacity: this.settings.customWallpaper?.opacity ?? 40, blur: this.settings.customWallpaper?.blur ?? 0 } : null }; }
   async getSkins() { return this.skins; }
-  async addSkin({ name, data, variant }) {
-    if (!data || typeof data !== 'string') throw new Error('Ungültiges Bild für Minecraft-Skin.');
+  async addSkin({ name, data, variant } = {}) {
+    validateSkinDataUrl(data);
+    if (this.skins.length >= MAX_SKINS) throw new Error(`Maximal ${MAX_SKINS} eigene Skins möglich. Bitte zuerst einen Skin entfernen.`);
     const detected = this.detectSkinVariant(data);
     const skin = {
       id: 'skin-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
-      name: (name || 'Custom Skin').slice(0, 32),
+      name: validateSkinName(name, 'Custom Skin'),
       data,
       variant: (variant === 'slim' || variant === 'classic') ? variant : detected,
       createdAt: Date.now()
@@ -106,7 +109,7 @@ class Controller {
     return this.state();
   }
   async renameSkin(id, newName, newVariant) {
-    const trimmed = (newName || '').trim().slice(0, 32);
+    const trimmed = validateSkinName(newName, '');
     if (!trimmed) throw new Error('Skin-Name darf nicht leer sein.');
     const validVariant = (newVariant === 'slim' || newVariant === 'classic') ? newVariant : null;
 
@@ -304,28 +307,60 @@ class Controller {
     } catch {}
     throw new Error(`Konnte den Skin für "${clean}" nicht finden oder laden.`);
   }
-  async getWallpaper() { return this.wallpaper; }
-  async setWallpaper({ data, type, name, opacity, blur }) {
-    if (!data || typeof data !== 'string') throw new Error('Ungültige Hintergrund-Daten.');
-    this.wallpaper = {
-      data,
-      type: type || 'image',
-      name: (name || 'Custom Wallpaper').slice(0, 64)
-    };
-    await this.store.write('wallpaper.json', this.wallpaper);
+  // Lädt wallpaper.json, migriert alte Data-URLs einmalig in eine Datei und verwirft ungültige Einträge.
+  async loadWallpaper() {
+    let saved = null, meta = null;
+    try { saved = await this.store.read('wallpaper.json', null); } catch {}
+    try {
+      if (saved && typeof saved.data === 'string') {
+        meta = await this.wallpapers.importDataUrl(saved.data, saved.name);
+        await this.store.write('wallpaper.json', meta);
+      } else if (saved) meta = await this.wallpapers.verify(saved);
+    } catch {
+      meta = null;
+      this.notice = 'Das eigene Hintergrundbild konnte nicht übernommen werden und wurde entfernt.';
+    }
+    if (saved && !meta) {
+      await this.store.delete('wallpaper.json').catch(() => {});
+      if (this.settings.customWallpaper) { this.settings.customWallpaper = null; await this.saveSettings().catch(() => {}); }
+    }
+    await this.wallpapers.prune(meta);
+    return meta;
+  }
+  publicWallpaper() { return this.wallpaper ? { url: this.wallpapers.url(this.wallpaper), type: this.wallpaper.type, name: this.wallpaper.name } : null; }
+  serveWallpaper(request) { return this.wallpapers.respond(request, this.wallpaper); }
+  async getWallpaper() { return this.publicWallpaper(); }
+  // Nur für den Dateidialog im Hauptprozess; die UI kann keine Pfade übergeben.
+  async importWallpaper(filePath, name) {
+    const meta = await this.wallpapers.import(filePath, name);
+    try { await this.store.write('wallpaper.json', meta); }
+    catch (error) { await this.wallpapers.remove(meta).catch(() => {}); throw error; }
+    const previous = this.wallpaper;
+    this.wallpaper = meta;
+    if (previous) await this.wallpapers.remove(previous).catch(() => {});
+    this.settings.customWallpaper = { enabled: true, opacity: 40, blur: 0 };
+    await this.saveSettings();
+    return { state: this.state(), wallpaper: this.publicWallpaper() };
+  }
+  // Aus der UI: ändert nur Darstellungsoptionen, niemals die Hintergrund-Daten.
+  async setWallpaper(input) {
+    if (!input || typeof input !== 'object') throw new Error('Ungültige Hintergrund-Einstellungen.');
+    if ('data' in input) throw new Error('Hintergründe können nur über die Dateiauswahl gesetzt werden.');
+    if (!this.wallpaper) throw new Error('Es ist kein eigener Hintergrund eingerichtet.');
+    const current = this.settings.customWallpaper || {};
     this.settings.customWallpaper = {
       enabled: true,
-      name: this.wallpaper.name,
-      type: this.wallpaper.type,
-      opacity: Number.isFinite(opacity) ? Math.max(10, Math.min(100, opacity)) : 40,
-      blur: Number.isFinite(blur) ? Math.max(0, Math.min(30, blur)) : 0
+      opacity: Number.isFinite(input.opacity) ? Math.max(10, Math.min(100, input.opacity)) : (current.opacity ?? 40),
+      blur: Number.isFinite(input.blur) ? Math.max(0, Math.min(30, input.blur)) : (current.blur ?? 0)
     };
     await this.saveSettings();
-    return { state: this.state(), wallpaper: this.wallpaper };
+    return { state: this.state(), wallpaper: this.publicWallpaper() };
   }
   async removeWallpaper() {
+    const previous = this.wallpaper;
     this.wallpaper = null;
     await this.store.delete('wallpaper.json');
+    if (previous) await this.wallpapers.remove(previous).catch(() => {});
     this.settings.customWallpaper = null;
     await this.saveSettings();
     return { state: this.state(), wallpaper: null };
@@ -387,9 +422,12 @@ class Controller {
       if (patch.customWallpaper === null) {
         next.customWallpaper = null;
       } else if (typeof patch.customWallpaper === 'object') {
-        next.customWallpaper = { ...next.customWallpaper, ...patch.customWallpaper };
-        if (typeof patch.customWallpaper.opacity === 'number') next.customWallpaper.opacity = Math.max(10, Math.min(100, patch.customWallpaper.opacity));
-        if (typeof patch.customWallpaper.blur === 'number') next.customWallpaper.blur = Math.max(0, Math.min(30, patch.customWallpaper.blur));
+        // Nur erlaubte Felder übernehmen, keine beliebigen Schlüssel aus der UI.
+        const current = next.customWallpaper || {}, input = patch.customWallpaper;
+        next.customWallpaper = { enabled: current.enabled !== false, opacity: current.opacity ?? 40, blur: current.blur ?? 0 };
+        if ('enabled' in input) next.customWallpaper.enabled = Boolean(input.enabled);
+        if (Number.isFinite(input.opacity)) next.customWallpaper.opacity = Math.max(10, Math.min(100, input.opacity));
+        if (Number.isFinite(input.blur)) next.customWallpaper.blur = Math.max(0, Math.min(30, input.blur));
       }
     }
     if ('language' in patch) {

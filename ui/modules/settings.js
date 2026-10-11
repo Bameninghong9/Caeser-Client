@@ -64,7 +64,6 @@ export function initSettings() {
   // Custom Wallpaper upload and controls
   let cachedWallpaper = null;
   const pickWallpaperBtn = $('btn-pick-wallpaper');
-  const wallpaperInput = $('wallpaper-file-input');
   const removeWallpaperBtn = $('btn-remove-wallpaper');
   const opacitySlider = $('wallpaper-opacity');
   const blurSlider = $('wallpaper-blur');
@@ -76,24 +75,24 @@ export function initSettings() {
       if (!cachedWallpaper && api.getWallpaper) {
         try { cachedWallpaper = await api.getWallpaper(); } catch {}
       }
-      if (cachedWallpaper?.data) {
+      if (cachedWallpaper?.url) {
         const layer = $('custom-wallpaper-layer');
         if (layer) {
           layer.hidden = false;
           const isVideo = cachedWallpaper.type === 'video';
           const existing = layer.firstElementChild;
-          if (!existing || (isVideo && existing.tagName !== 'VIDEO') || (!isVideo && existing.tagName !== 'IMG')) {
+          if (!existing || (isVideo && existing.tagName !== 'VIDEO') || (!isVideo && existing.tagName !== 'IMG') || existing.getAttribute('src') !== cachedWallpaper.url) {
             layer.innerHTML = isVideo
-              ? `<video src="${cachedWallpaper.data}" autoplay loop muted playsinline class="custom-wallpaper-media"></video>`
-              : `<img src="${cachedWallpaper.data}" alt="" class="custom-wallpaper-media">`;
+              ? `<video src="${cachedWallpaper.url}" autoplay loop muted playsinline class="custom-wallpaper-media"></video>`
+              : `<img src="${cachedWallpaper.url}" alt="" class="custom-wallpaper-media">`;
           }
         }
         const preview = $('wallpaper-preview-inner');
         if (preview) {
           const isVideo = cachedWallpaper.type === 'video';
           preview.innerHTML = isVideo
-            ? `<video src="${cachedWallpaper.data}" autoplay loop muted playsinline class="wallpaper-preview-media"></video>`
-            : `<img src="${cachedWallpaper.data}" alt="" class="wallpaper-preview-media">`;
+            ? `<video src="${cachedWallpaper.url}" autoplay loop muted playsinline class="wallpaper-preview-media"></video>`
+            : `<img src="${cachedWallpaper.url}" alt="" class="wallpaper-preview-media">`;
         }
         if (removeWallpaperBtn) removeWallpaperBtn.hidden = false;
         const op = customWallpaperMeta.opacity ?? 40;
@@ -119,35 +118,13 @@ export function initSettings() {
 
   if (pickWallpaperBtn) {
     pickWallpaperBtn.onclick = () => action(async () => {
-      if (api.pickWallpaperFile) {
-        const res = await api.pickWallpaperFile();
-        if (res) {
-          cachedWallpaper = res.wallpaper;
-          update(res.state);
-          updateWallpaperDisplay(res.state.settings.customWallpaper);
-          toast('Wallpaper eingerichtet!');
-        }
-      } else if (wallpaperInput) {
-        wallpaperInput.click();
-      }
-    });
-  }
-
-  if (wallpaperInput) {
-    wallpaperInput.onchange = () => action(async () => {
-      const file = wallpaperInput.files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const data = reader.result;
-        const isVideo = file.type.startsWith('video');
-        const res = await api.setWallpaper({ data, type: isVideo ? 'video' : 'image', name: file.name });
+      const res = await api.pickWallpaperFile();
+      if (res) {
         cachedWallpaper = res.wallpaper;
         update(res.state);
         updateWallpaperDisplay(res.state.settings.customWallpaper);
         toast('Wallpaper eingerichtet!');
-      };
-      reader.readAsDataURL(file);
+      }
     });
   }
 
