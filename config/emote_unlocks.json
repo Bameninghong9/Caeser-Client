@@ -3,7 +3,6 @@
   "comment": "Caeser Client - Remote Cosmetic & Emote Unlocks. Admins always have everything. Supports IDs: T_POSE, SIT, WHEELCHAIR, BASKETBALL, JUGGLE, ANGEL, DRAGON, HALO, HORNS, MINIME_SIT, MINIME_HEAD, MINIME_HAND, MINIME_CHAIN, BABY_DRAGON, JELLY_SLIME or category names (EMOTES, WINGS, HEAD, ACCESSORIES, PETS) or '*' for all.",
   "admins": [
     "Bameninghong",
-    "John6Pork7",
     "Bameninghong9"
   ],
   "default_unlocked": [
@@ -15,8 +14,7 @@
       "*"
     ],
     "John6Pork7": [
-      "WHEELCHAIR",
-      "*"
+      "WHEELCHAIR"
     ],
     "Sarah_MC": [
       "BASKETBALL",
