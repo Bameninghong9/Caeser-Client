@@ -20,12 +20,13 @@ const DEFAULT_COSMETICS = {
   head: { type: 'none', color: '#facc15' },
   pet: { type: 'none', color: '#38bdf8', customPlayer: '', customSkinUrl: '' }
 };
+const PACKAGE_VERSION = require('../../package.json').version;
 const CAESER_DISCORD_ICON = 'https://cdn.discordapp.com/app-icons/1558499625999007914/8a6c22196782afd29a05440238daf206.png';
 
 class Controller {
   constructor({ directory, encryption, resources, appVersion, emit, openBrowser }) {
     this.store = new Store(directory, encryption); this.root = path.join(directory, 'minecraft');
-    Object.assign(this, { resources, appVersion, emit, openBrowser });
+    Object.assign(this, { resources, appVersion: appVersion || PACKAGE_VERSION, emit, openBrowser });
     this.maxMemoryMb = Math.max(1024, Math.min(65536, Math.floor(os.totalmem() / 1073741824 - 2) * 1024));
 
     this.profiles = new Profiles(this.store, this.maxMemoryMb);
@@ -40,7 +41,7 @@ class Controller {
       assertIdle:()=>{if(this.busy) throw new Error('Ein Startvorgang läuft bereits.');},report:data=>this.emit('mod-progress',data)});
   }
   async load() {
-    this.settings = { theme: 'Ultraviolet', customAccent: '', atmosphere: 'nebula', glow: 'subtle', clientId: '', javaPath: '', activeAccount: '', activeSkinId: 'account', hiddenSkins: [], skinNames: {}, language: 'de', animations: true, autoOpenLog: true, discordRpc: true, customWallpaper: null, cosmetics: DEFAULT_COSMETICS, ...await this.store.read('settings.json', {}) };
+    this.settings = { theme: 'Ultraviolet', customAccent: '', atmosphere: 'nebula', glow: 'subtle', javaPath: '', activeAccount: '', activeSkinId: 'account', hiddenSkins: [], skinNames: {}, language: 'de', animations: true, autoOpenLog: true, discordRpc: true, customWallpaper: null, cosmetics: DEFAULT_COSMETICS, ...await this.store.read('settings.json', {}) };
     if (this.settings.atmosphere === 'obsidian') this.settings.atmosphere = 'nebula';
     if (this.settings.atmosphere === 'aurora') this.settings.atmosphere = 'rain';
     if (!this.settings.cosmetics) this.settings.cosmetics = DEFAULT_COSMETICS;
@@ -54,7 +55,7 @@ class Controller {
         state: 'Bereit zum Spielen',
         assets: {
           large_image: CAESER_DISCORD_ICON,
-          large_text: `Caeser Client v${this.appVersion || '0.3.30'}`
+          large_text: `Caeser Client v${this.appVersion}`
         }
       });
     } else {
@@ -415,11 +416,6 @@ class Controller {
       if (!['off','subtle','neon'].includes(patch.glow)) throw new Error('Ungültige Glow-Einstellung.');
       next.glow = patch.glow;
     }
-    if ('clientId' in patch) {
-      if (this.loginController) throw new Error('Bitte zuerst die Anmeldung abbrechen.');
-      if (typeof patch.clientId !== 'string' || (patch.clientId && !/^[a-f\d]{8}-([a-f\d]{4}-){3}[a-f\d]{12}$/i.test(patch.clientId))) throw new Error('Die Anwendungs-ID muss eine gültige UUID sein.');
-      next.clientId = patch.clientId;
-    }
     if ('animations' in patch) next.animations = Boolean(patch.animations);
     if ('autoOpenLog' in patch) next.autoOpenLog = Boolean(patch.autoOpenLog);
     if ('discordRpc' in patch) {
@@ -432,13 +428,13 @@ class Controller {
             details: `Spielt ${profile.name}`,
             state: `${profile.version} (${profile.mode === 'caeser' ? 'Caeser Client' : profile.mode === 'fabric' ? 'Fabric' : 'Vanilla'})`,
             timestamps: { start: Math.floor(Date.now() / 1000) },
-            assets: { large_image: CAESER_DISCORD_ICON, large_text: `Caeser Client v${this.appVersion || '0.3.30'}` }
+            assets: { large_image: CAESER_DISCORD_ICON, large_text: `Caeser Client v${this.appVersion}` }
           });
         } else {
           this.discordRpc.setActivity({
             details: 'Im Hauptmenü',
             state: 'Bereit zum Spielen',
-            assets: { large_image: CAESER_DISCORD_ICON, large_text: `Caeser Client v${this.appVersion || '0.3.30'}` }
+            assets: { large_image: CAESER_DISCORD_ICON, large_text: `Caeser Client v${this.appVersion}` }
           });
         }
       }
@@ -580,7 +576,7 @@ class Controller {
             timestamps: { start: Math.floor(Date.now() / 1000) },
             assets: {
               large_image: CAESER_DISCORD_ICON,
-              large_text: `Caeser Client v${this.appVersion || '0.3.30'}`
+              large_text: `Caeser Client v${this.appVersion}`
             }
           }, child.pid);
         }
@@ -640,7 +636,7 @@ class Controller {
           this.discordRpc.setActivity({
             details: 'Im Hauptmenü',
             state: 'Bereit zum Spielen',
-            assets: { large_image: CAESER_DISCORD_ICON, large_text: `Caeser Client v${this.appVersion || '0.3.30'}` }
+            assets: { large_image: CAESER_DISCORD_ICON, large_text: `Caeser Client v${this.appVersion}` }
           });
         }
 
