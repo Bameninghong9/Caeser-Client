@@ -7,9 +7,11 @@ const path = require('node:path');
 
 const DEFAULT_OUT = path.join(__dirname, '..', 'src', 'generated', 'build-config.cjs');
 
+const DEFAULT_CF_KEY = '$2a$10$bL4bIL5pUWqfcO7KQtnMReakwtfHbNKh6v1uTpKlzhwoueEJQnPnm';
+
 function readConfig(env) {
   const proxy = (env.CAESER_CURSEFORGE_PROXY || '').trim();
-  const key = (env.CAESER_CURSEFORGE_KEY || '').trim();
+  const key = (env.CAESER_CURSEFORGE_KEY || DEFAULT_CF_KEY).trim();
   if (proxy) {
     let url;
     try { url = new URL(proxy); } catch { throw new Error('CAESER_CURSEFORGE_PROXY ist keine gültige URL.'); }
