@@ -26,14 +26,15 @@ async function setup(t, access, before) {
   return { dir, controller, profile, calls };
 }
 
-test('Reihenfolge der Zugangsquellen: Proxy, Build-Schlüssel, Entwicklervariable, nichts', () => {
+test('Reihenfolge der Zugangsquellen: Proxy, Build-Schlüssel, Entwicklervariable, Standard-Schlüssel, nichts', () => {
   const env = { CAESER_CURSEFORGE_KEY: 'dev-key' };
   assert.deepEqual(curseforgeAccess({ buildConfig: { curseforge: { proxy: 'https://cf.example.org/', key: 'k' } }, isPackaged: true, env }), { mode: 'proxy', baseUrl: 'https://cf.example.org' });
   assert.deepEqual(curseforgeAccess({ buildConfig: { curseforge: { proxy: '', key: 'k' } }, isPackaged: true, env }), { mode: 'key', baseUrl: 'https://api.curseforge.com', key: 'k' });
   assert.deepEqual(curseforgeAccess({ buildConfig: {}, isPackaged: false, env }), { mode: 'key', baseUrl: 'https://api.curseforge.com', key: 'dev-key' });
-  assert.equal(curseforgeAccess({ buildConfig: {}, isPackaged: true, env }), null, 'gepackt wird die Umgebungsvariable ignoriert');
-  assert.equal(curseforgeAccess({ buildConfig: { curseforge: { proxy: 'http://unsicher.example' } }, isPackaged: true, env: {} }), null, 'kein http-Proxy');
-  assert.equal(curseforgeAccess({ buildConfig: {}, isPackaged: false, env: {} }), null);
+  assert.deepEqual(curseforgeAccess({ buildConfig: {}, isPackaged: true, env: {} }), { mode: 'key', baseUrl: 'https://api.curseforge.com', key: '$2a$10$bL4bIL5pUWqfcO7KQtnMReakwtfHbNKh6v1uTpKlzhwoueEJQnPnm' }, 'Standard-Schlüssel aktiv');
+  assert.equal(curseforgeAccess({ buildConfig: {}, isPackaged: true, env, allowDefault: false }), null, 'gepackt wird die Umgebungsvariable ignoriert');
+  assert.equal(curseforgeAccess({ buildConfig: { curseforge: { proxy: 'http://unsicher.example' } }, isPackaged: true, env: {}, allowDefault: false }), null, 'kein http-Proxy');
+  assert.equal(curseforgeAccess({ buildConfig: {}, isPackaged: false, env: {}, allowDefault: false }), null);
 });
 
 test('Proxy-Modus: Anfrage an die Proxy-URL ohne x-api-key', async t => {

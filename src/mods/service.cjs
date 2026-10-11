@@ -12,7 +12,9 @@ function filename(name) {
 function downloadURL(url, source) {
   if (!url) throw new Error('Für diese Datei ist kein direkter Download erlaubt.');
   const parsed = new URL(url);
-  const allowed = source === 'modrinth' ? parsed.hostname === 'cdn.modrinth.com' : parsed.hostname.endsWith('.forgecdn.net');
+  const allowed = source === 'modrinth'
+    ? parsed.hostname === 'cdn.modrinth.com'
+    : (parsed.hostname.endsWith('.forgecdn.net') || parsed.hostname.endsWith('.curseforge.com'));
   if (parsed.protocol !== 'https:' || !allowed || parsed.username || parsed.password) throw new Error('Die Download-Adresse gehört nicht zur gewählten Mod-Quelle.');
   return url;
 }
@@ -122,7 +124,13 @@ class Mods {
         catch { throw new Error(`Aktiviere den Eintrag „${existing.name}“ oder entferne seinen alten Eintrag.`); }
         return;
       }
-      if (!version.file?.hash || !['sha1','sha512'].includes(version.file.algorithm) || !new RegExp(`^[a-f0-9]{${version.file.algorithm === 'sha1' ? 40 : 128}}$`, 'i').test(version.file.hash)) throw new Error('Die Quelle liefert keine gültige Datei-Prüfsumme.');
+      if (version.file?.hash) {
+        const hashLengths = { sha1: 40, sha512: 128, md5: 32 };
+        const len = hashLengths[version.file.algorithm];
+        if (!len || !new RegExp(`^[a-f0-9]{${len}}$`, 'i').test(version.file.hash)) throw new Error('Die Quelle liefert keine gültige Datei-Prüfsumme.');
+      } else if (source === 'modrinth') {
+        throw new Error('Die Quelle liefert keine gültige Datei-Prüfsumme.');
+      }
       filename(version.file.name); downloadURL(version.file.url, source);
       const project = await provider.project(key);
       planned.set(key, { version, project });

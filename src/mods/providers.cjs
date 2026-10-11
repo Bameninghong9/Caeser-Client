@@ -2,9 +2,18 @@ const { json } = require('../shared/net.cjs');
 const USER_AGENT = 'CaeserClient/0.3.0 (Minecraft desktop launcher)';
 const loaderFor = profile => profile.mode === 'caeser' ? 'fabric' : profile.mode;
 function compatible(version, profile, type = 'mods') {
-  if (type === 'resourcepacks' || type === 'resourcepack') return !version.gameVersions?.length || version.gameVersions.includes(profile.version);
+  if (type === 'resourcepacks' || type === 'resourcepack') {
+    if (!version.gameVersions?.length) return true;
+    if (version.gameVersions.includes(profile.version)) return true;
+    const majorMinor = profile.version.split('.').slice(0, 2).join('.');
+    return version.gameVersions.some(v => v === majorMinor || v.startsWith(majorMinor + '.'));
+  }
   if (type === 'shaders' || type === 'shader') return true;
-  return version.gameVersions.includes(profile.version) && version.loaders.includes(loaderFor(profile));
+  const loader = loaderFor(profile);
+  const matchesLoader = version.loaders.includes(loader) || (loader === 'fabric' && version.loaders.includes('quilt'));
+  const matchesVersion = version.gameVersions.includes(profile.version) ||
+    version.gameVersions.some(v => v === profile.version.split('.').slice(0, 2).join('.'));
+  return matchesVersion && matchesLoader;
 }
 function modrinthVersion(v) {
   const file = v.files.find(f => f.primary) || v.files[0];
@@ -36,10 +45,11 @@ class Modrinth {
   }
 }
 function curseVersion(v) {
-  const hash = v.hashes?.find(h => h.algo === 1);
-  return { id: String(v.id), projectId: String(v.modId), label: v.displayName, published: v.fileDate,
+  const hash = v.hashes?.find(h => h.algo === 1) || v.hashes?.find(h => h.algo === 2);
+  const algo = hash?.algo === 2 ? 'md5' : 'sha1';
+  return { id: String(v.id), projectId: String(v.modId), label: v.displayName || v.fileName, published: v.fileDate,
     gameVersions: v.gameVersions || [], loaders: (v.gameVersions || []).map(s => s.toLowerCase()),
-    file: { name: v.fileName, url: v.downloadUrl, hash: hash?.value, algorithm: 'sha1' },
+    file: { name: v.fileName, url: v.downloadUrl || null, hash: hash?.value, algorithm: algo },
     dependencies: (v.dependencies || []).filter(d => d.relationType === 3).map(d => ({ projectId: String(d.modId) })) };
 }
 class CurseForge {
@@ -54,11 +64,20 @@ class CurseForge {
   }
   async search(profile, query, offset = 0, type = 'mods') {
     let params;
-    if (type === 'resourcepacks' || type === 'resourcepack') params = { gameId: '432', classId: '12', gameVersion: profile.version, searchFilter: query, index: String(offset), pageSize: '20', sortField: '6', sortOrder: 'desc' };
-    else if (type === 'shaders' || type === 'shader') params = { gameId: '432', classId: '6552', searchFilter: query, index: String(offset), pageSize: '20', sortField: '6', sortOrder: 'desc' };
-    else params = { gameId: '432', classId: '6', gameVersion: profile.version, modLoaderType: '4', searchFilter: query, index: String(offset), pageSize: '20', sortField: '6', sortOrder: 'desc' };
-    const data = await this.request(`/mods/search?${new URLSearchParams(params)}`);
-    return { total: data.pagination?.totalCount || 0, hits: data.data.map(p => ({ id: String(p.id), title: p.name, description: p.summary, author: p.authors?.map(a=>a.name).join(', ') || '', iconUrl: p.logo?.thumbnailUrl, downloads: p.downloadCount })) };
+    if (type === 'resourcepacks' || type === 'resourcepack') {
+      params = { gameId: '432', classId: '12', searchFilter: query, index: String(offset), pageSize: '20', sortField: '6', sortOrder: 'desc' };
+      if (!query) params.gameVersion = profile.version;
+    } else if (type === 'shaders' || type === 'shader') {
+      params = { gameId: '432', classId: '6552', searchFilter: query, index: String(offset), pageSize: '20', sortField: '6', sortOrder: 'desc' };
+    } else {
+      params = { gameId: '432', classId: '6', gameVersion: profile.version, modLoaderType: '4', searchFilter: query, index: String(offset), pageSize: '20', sortField: '6', sortOrder: 'desc' };
+    }
+    let data = await this.request(`/mods/search?${new URLSearchParams(params)}`);
+    if ((!data.data || !data.data.length) && query && params.gameVersion) {
+      delete params.gameVersion;
+      data = await this.request(`/mods/search?${new URLSearchParams(params)}`);
+    }
+    return { total: data.pagination?.totalCount || 0, hits: (data.data || []).map(p => ({ id: String(p.id), title: p.name, description: p.summary, author: p.authors?.map(a=>a.name).join(', ') || '', iconUrl: p.logo?.thumbnailUrl, downloads: p.downloadCount })) };
   }
   async project(id) { const { data:p } = await this.request(`/mods/${Number(id)}`); return { id: String(p.id), title: p.name, iconUrl: p.logo?.thumbnailUrl }; }
   async version(profile, projectId, versionId, type = 'mods') {
@@ -73,13 +92,32 @@ class CurseForge {
         : { gameVersion: profile.version, modLoaderType: '4', pageSize: '50' };
       do {
         const result = await this.request(`/mods/${Number(projectId)}/files?${new URLSearchParams({ ...params, index: String(index) })}`);
-        selected = result.data.map(curseVersion).filter(v => compatible(v, profile, type)).sort((a,b)=>Date.parse(b.published)-Date.parse(a.published))[0];
-        index += result.data.length;
-        if (selected || !result.data.length || index >= (result.pagination?.totalCount || index)) break;
+        const files = (result.data || []).map(curseVersion);
+        selected = files.filter(v => compatible(v, profile, type)).sort((a,b)=>Date.parse(b.published)-Date.parse(a.published))[0];
+        index += files.length;
+        if (selected || !files.length || index >= (result.pagination?.totalCount || index)) break;
       } while (index < 1000);
+
+      // Fallback für Resource Packs / Shaders wenn kein exakter Versions-Treffer vorhanden ist
+      if (!selected && (type === 'resourcepacks' || type === 'resourcepack' || type === 'shaders' || type === 'shader')) {
+        const result = await this.request(`/mods/${Number(projectId)}/files?pageSize=50`);
+        const files = (result.data || []).map(curseVersion);
+        selected = files.filter(v => compatible(v, profile, type)).sort((a,b)=>Date.parse(b.published)-Date.parse(a.published))[0] || files[0];
+      }
     }
     if (!selected) throw new Error(`Keine passende CurseForge-Datei für ${profile.version} verfügbar.`);
-    if (!selected.file.url) throw new Error('Der Autor erlaubt keinen direkten Launcher-Download dieser CurseForge-Datei.');
+
+    // Download-URL ermitteln (falls in der API noch null/leer, über /download-url auflösen)
+    if (!selected.file?.url) {
+      try {
+        const dlRes = await this.request(`/mods/${Number(projectId)}/files/${Number(selected.id)}/download-url`);
+        if (typeof dlRes?.data === 'string' && dlRes.data.startsWith('http')) {
+          selected.file.url = dlRes.data;
+        }
+      } catch {}
+    }
+
+    if (!selected.file?.url) throw new Error('Der Autor erlaubt keinen direkten Launcher-Download dieser CurseForge-Datei.');
     return selected;
   }
 }
