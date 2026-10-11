@@ -90,6 +90,8 @@ function renderAccounts() {
 }
 export function initAccounts() {
   onState(renderAccounts);
+  // Ingame-Wechsel oder -Anmeldung über die Account-Brücke: Kontoliste und aktiven Account neu laden.
+  api.on('accounts-changed', () => action(async () => update(await api.state())));
   $('add-account').onclick=()=>{$('account-menu').hidePopover();$('accounts-dialog').showModal();};
   $('login-button').onclick = async () => {
     if (loginBusy) return; loginBusy = true; $('login-button').disabled = true; $('login-pending').hidden = false; $('login-error').hidden = true;

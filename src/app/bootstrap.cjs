@@ -38,6 +38,7 @@ else {
         if (logManager) logManager.handleEmit(name, data);
       } });
     await controller.load();
+    app.once('will-quit', () => { controller.bridge.stop().catch(() => {}); }); // Account-Brücke beim Beenden schließen
     protocol.handle(WALLPAPER_SCHEME, request => controller.serveWallpaper(request));
     logManager = createLogWindowManager(controller);
     win = createWindow(controller, logManager);

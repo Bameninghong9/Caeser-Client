@@ -317,7 +317,10 @@ function launchArguments(prepared, account, memory) {
     ...(prepared.loggingArgument ? [prepared.loggingArgument] : []), prepared.mainClass,
     ...argumentsFor(game, values), ...argumentsFor(prepared.extraArguments.game, values)];
 }
-function start(prepared, account, memory) {
-  return spawn(prepared.java, launchArguments(prepared, account, memory), { cwd: prepared.instance, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+// extraEnv (optional) landet nur in der Umgebung des Spielprozesses, nie in den Startargumenten.
+function start(prepared, account, memory, extraEnv) {
+  const options = { cwd: prepared.instance, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] };
+  if (extraEnv) options.env = { ...process.env, ...extraEnv };
+  return spawn(prepared.java, launchArguments(prepared, account, memory), options);
 }
 module.exports = { manifest, prepare, start, allowed, argumentsFor, mavenPath, launchArguments, ensureJava };

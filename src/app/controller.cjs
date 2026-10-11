@@ -12,6 +12,7 @@ const { DiscordRpcClient } = require('../shared/discord-rpc.cjs');
 const { createLogParser } = require('../game/log-parser.cjs');
 const { diagnoseCrash, executeAutoFix } = require('../game/crash-doctor.cjs');
 const { Wallpapers } = require('./wallpaper.cjs');
+const { AccountBridge, redactSecrets } = require('./account-bridge.cjs');
 const { LogStore } = require('../game/log-store.cjs');
 const { curseforgeAccess } = require('../mods/curseforge-config.cjs');
 const { redactLog, buildShareText, uploadToMclogs, localUsernames, MCLOGS_URL_PREFIX } = require('../shared/log-share.cjs');
@@ -42,6 +43,7 @@ class Controller {
     this.screenshotThumbsCache = new Map();
     this.screenshotIndex = new Map(); this.screenshotSalt = crypto.randomBytes(32);
     this.discordRpc = new DiscordRpcClient();
+    this.bridge = new AccountBridge(this); // Ingame-Account-Switcher, läuft nur solange eine Instanz läuft
     this.mods = new Mods({root:this.root, profiles:this.profiles, curseforgeAccess:()=>this.curseforgeAccess(),
       assertIdle:()=>{if(this.busy) throw new Error('Ein Startvorgang läuft bereits.');},report:data=>this.emit('mod-progress',data)});
   }
@@ -499,14 +501,17 @@ class Controller {
     if (patch.javaPath === '') next.javaPath = '';
     await this.store.write('settings.json', next); this.settings = next; return this.state();
   }
-  async login() {
+  async login() { await this.addAccount(); return this.state(); }
+  // foreground: Anmeldung über die Account-Brücke, das Microsoft-Fenster erscheint ohne (minimiertes) Hauptfenster als Parent.
+  async addAccount({ foreground = false } = {}) {
     if (this.loginController) throw new Error('Eine Anmeldung läuft bereits.');
     if (!this.store.encryption.isEncryptionAvailable()) throw new Error('Windows-Kontoverschlüsselung nicht verfügbar.');
     const controller = new AbortController(); this.loginController = controller;
+    const openBrowser = foreground ? (url, callbacks) => this.openBrowser(url, { ...callbacks, foreground: true }) : this.openBrowser;
     try {
-      const account = await require('../auth/sisu.cjs').login(this.openBrowser, controller.signal); controller.signal.throwIfAborted();
+      const account = await require('../auth/sisu.cjs').login(openBrowser, controller.signal); controller.signal.throwIfAborted();
       this.accounts = [...this.accounts.filter(a => a.id !== account.id), account]; await this.saveAccounts();
-      this.settings.activeAccount = account.id; await this.saveSettings(); return this.state();
+      this.settings.activeAccount = account.id; await this.saveSettings(); return account;
     } finally { this.loginController = null; this.emit('auth-finished'); }
   }
   async removeAccount(id) {
@@ -540,15 +545,19 @@ class Controller {
     this.busy = true;
     const options = { ...profile, instanceKey: instanceKey(profile), javaPath: this.settings.javaPath, cosmetics: this.settings.cosmetics || DEFAULT_COSMETICS };
     const report = progress => this.emit('progress', progress); report({ stage: 'Konto wird geprüft', percent: null });
+    let bridgeToken = null;
     try {
       account = await auth.refresh(account); await this.updateAccount(account);
       const prepared = await launcher.prepare({ root: this.root, ...options, resources: this.resources, report });
       account = await auth.refresh(account); await this.updateAccount(account);
       await this.syncSkinOnLaunch();
-      const child = launcher.start(prepared, account, options.memoryMb);
+      const instanceId = 'inst_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      // Account-Brücke: Token zuerst registrieren (verhindert ein Stoppen des Servers dazwischen), dann Server sicherstellen.
+      bridgeToken = this.bridge.register(instanceId, account.id);
+      const bridgeUrl = await this.bridge.start();
+      const child = launcher.start(prepared, account, options.memoryMb, { CAESER_BRIDGE_URL: bridgeUrl, CAESER_BRIDGE_TOKEN: bridgeToken });
       this.games.add(child);
       this.game = child;
-      const instanceId = 'inst_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
       child.instanceId = instanceId;
       const instanceData = { id: instanceId, process: child, stoppedByUser: false, startTime: Date.now() };
       this.instances.set(instanceId, instanceData);
@@ -557,7 +566,8 @@ class Controller {
 
       let session, timer;
       let buffer = '';
-      const redact = text => String(text).replaceAll(account.accessToken, '[TOKEN]').replaceAll(account.refreshToken, '[TOKEN]');
+      // Tokens aller zum Zeitpunkt der Zeile bekannten Konten schwärzen (Ingame-Wechsel), dazu Start-Account und Brücken-Token.
+      const redact = text => redactSecrets(text, [...this.accounts.flatMap(a => [a.accessToken, a.refreshToken]), account.accessToken, account.refreshToken, bridgeToken]);
       const parser = createLogParser(parsedLine => {
         const item = redact(parsedLine).slice(0, 2000);
         this.logs.push(instanceId, item);
@@ -603,6 +613,7 @@ class Controller {
         timer=setInterval(()=>session.flush().catch(()=>{}),15000); timer.unref();
       });
       child.once('close', async code => {
+        this.bridge.unregister(bridgeToken); // Token sofort ungültig; ohne laufende Instanz stoppt die Brücke
         clearInterval(timer);
         if (buffer) {
           parser.feed(buffer);
@@ -662,6 +673,7 @@ class Controller {
       report({ stage: 'Minecraft läuft', percent: 100 });
       return { running: true, count: this.games.size, instanceId };
     } catch (error) {
+      if (bridgeToken) this.bridge.unregister(bridgeToken);
       if (this.games.size === 0) this.game = null;
       report({ stage: 'Start fehlgeschlagen', percent: 0 });
       throw error;
@@ -1025,6 +1037,7 @@ class Controller {
   }
   destroy() {
     this.discordRpc.destroy();
+    this.bridge.stop().catch(() => {});
   }
 }
 module.exports = { Controller };
