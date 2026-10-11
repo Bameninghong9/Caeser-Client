@@ -1,6 +1,7 @@
 import { $, api, model, update, onState, action, toast, loaderName, currentProfile, currentAccount, showAccounts, openDetails, getActiveSkinTexture } from './common.js';
 import { openProfile } from './profiles.js';
 import { SkinRenderer } from './skin-renderer.js';
+import { t } from './i18n.js';
 
 let skinRenderer = null;
 let currentSkinKey = '__init__';
@@ -98,7 +99,7 @@ export function initPlay() {
   api.on('progress', progress => { $('progress-label').textContent = progress.stage; $('progress-fill').classList.toggle('indeterminate', progress.percent === null); $('progress-fill').style.width = progress.percent === null ? '30%' : `${progress.percent}%`; });
   const lines = [];
   api.on('game-log', line => { lines.push(line); if (lines.length > 500) lines.shift(); $('game-log').textContent = lines.join('\n'); $('game-log').scrollTop = $('game-log').scrollHeight; });
-  api.on('game-exit', ({ code, diagnosis, runningCount }) => {
+  api.on('game-exit', ({ instanceId, code, diagnosis, runningCount }) => {
     action(async()=>update(await api.state()));
     model.running = (runningCount && runningCount > 0);
     $('play-button').disabled = false;
@@ -112,7 +113,7 @@ export function initPlay() {
     }
     if (code !== 0) {
       if (diagnosis) {
-        showCrashDoctor(diagnosis);
+        showCrashDoctor(diagnosis, instanceId);
       } else {
         toast('Minecraft wurde unerwartet beendet. Details stehen im Spielprotokoll.', true);
       }
@@ -128,9 +129,30 @@ export function initPlay() {
   $('clear-log').onclick = () => { lines.length = 0; $('game-log').textContent = 'Anzeige geleert.'; };
 }
 
-function showCrashDoctor(diag) {
+function showCrashDoctor(diag, instanceId) {
   const dialog = $('crash-doctor-dialog');
   if (!dialog) return;
+
+  // Log teilen: nur die Instanz-ID geht an den Hauptprozess, der schwärzt, hochlädt und den Link kopiert
+  const shareBtn = $('doctor-share-log'), shareOpenBtn = $('doctor-share-open');
+  if (shareBtn) {
+    shareBtn.hidden = !instanceId; shareBtn.disabled = false; shareBtn.textContent = t('doctorShareLog');
+    if (shareOpenBtn) shareOpenBtn.hidden = true;
+    shareBtn.onclick = async () => {
+      shareBtn.disabled = true; shareBtn.textContent = t('shareUploading');
+      try {
+        const res = await api.shareLog(instanceId);
+        if (res?.url) {
+          toast(`${t('shareLinkCopied')} ${res.url}`);
+          if (shareOpenBtn) { shareOpenBtn.hidden = false; shareOpenBtn.onclick = () => action(() => api.openSharedLog(res.id)); }
+        }
+      } catch (err) {
+        toast(`${t('shareFailed')} ${err.message}`, true);
+      } finally {
+        shareBtn.disabled = false; shareBtn.textContent = t('doctorShareLog');
+      }
+    };
+  }
 
   const titleEl = $('doctor-title');
   const iconEl = $('doctor-icon');

@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('logApi', {
   clear: () => ipcRenderer.invoke('log-clear'),
   copy: (text) => ipcRenderer.invoke('log-copy', String(text ?? '')),
   saveInstance: (instanceId) => ipcRenderer.invoke('log-save-instance', instanceId),
+  shareInstance: (instanceId) => ipcRenderer.invoke('log-share-instance', instanceId),
+  openShared: (id) => ipcRenderer.invoke('log-share-open-link', id),
   on: (channel, callback) => {
     const allowed = [
       'init-logs',

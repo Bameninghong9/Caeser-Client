@@ -77,6 +77,9 @@ function register(controller, win, pageURL, logManager) {
     return true;
   });
   handle('crash-doctor-fix', action => controller.autoFixCrash(action));
+  // Log teilen: nur Instanz-ID bzw. mclo.gs-ID, niemals Inhalt oder URL aus der UI
+  handle('log-share', id => controller.shareLog(id, { window: win }));
+  handle('log-share-open', id => controller.openSharedLog(id));
   handle('wallpaper-pick-file', async () => {
     const result = await dialog.showOpenDialog(win, {
       title: 'Hintergrund auswählen (Bild, GIF, Video)',

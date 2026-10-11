@@ -13,6 +13,7 @@ const { createLogParser } = require('../game/log-parser.cjs');
 const { diagnoseCrash, executeAutoFix } = require('../game/crash-doctor.cjs');
 const { Wallpapers } = require('./wallpaper.cjs');
 const { LogStore } = require('../game/log-store.cjs');
+const { redactLog, buildShareText, uploadToMclogs, localUsernames, MCLOGS_URL_PREFIX } = require('../shared/log-share.cjs');
 const { validateSkinDataUrl, validateSkinName, MAX_SKINS } = require('../shared/skins.cjs');
 const themes = ['Cyberpunk','Ultraviolet','Toxic','Inferno','Glacier','Bloodmoon','Aurora','Bubblegum','Limelight','Sunset','Electric','Nebula','Goldrush','Emerald','Plasma','Crimson'];
 const DEFAULT_COSMETICS = {
@@ -24,9 +25,12 @@ const PACKAGE_VERSION = require('../../package.json').version;
 const CAESER_DISCORD_ICON = 'https://cdn.discordapp.com/app-icons/1558499625999007914/8a6c22196782afd29a05440238daf206.png';
 
 class Controller {
-  constructor({ directory, encryption, resources, appVersion, emit, openBrowser }) {
+  constructor({ directory, encryption, resources, appVersion, emit, openBrowser, confirmShare, writeClipboard, openExternal }) {
     this.store = new Store(directory, encryption); this.root = path.join(directory, 'minecraft');
     Object.assign(this, { resources, appVersion: appVersion || PACKAGE_VERSION, emit, openBrowser });
+    // Log-Teilen: Bestätigungsdialog, Zwischenablage und Browser kommen aus bootstrap (ohne confirmShare kein Upload).
+    Object.assign(this, { confirmShare: confirmShare || (async () => ({ ok: false })), writeClipboard: writeClipboard || (() => {}), openExternal: openExternal || (async () => {}) });
+    this.shareConsentGiven = false; this.sharedLogs = new Map();
     this.maxMemoryMb = Math.max(1024, Math.min(65536, Math.floor(os.totalmem() / 1073741824 - 2) * 1024));
 
     this.profiles = new Profiles(this.store, this.maxMemoryMb);
@@ -41,7 +45,7 @@ class Controller {
       assertIdle:()=>{if(this.busy) throw new Error('Ein Startvorgang läuft bereits.');},report:data=>this.emit('mod-progress',data)});
   }
   async load() {
-    this.settings = { theme: 'Ultraviolet', customAccent: '', atmosphere: 'nebula', glow: 'subtle', javaPath: '', activeAccount: '', activeSkinId: 'account', hiddenSkins: [], skinNames: {}, language: 'de', animations: true, autoOpenLog: true, discordRpc: true, customWallpaper: null, cosmetics: DEFAULT_COSMETICS, ...await this.store.read('settings.json', {}) };
+    this.settings = { theme: 'Ultraviolet', customAccent: '', atmosphere: 'nebula', glow: 'subtle', javaPath: '', activeAccount: '', activeSkinId: 'account', hiddenSkins: [], skinNames: {}, language: 'de', animations: true, autoOpenLog: true, discordRpc: true, shareLogsConfirmed: false, customWallpaper: null, cosmetics: DEFAULT_COSMETICS, ...await this.store.read('settings.json', {}) };
     if (this.settings.atmosphere === 'obsidian') this.settings.atmosphere = 'nebula';
     if (this.settings.atmosphere === 'aurora') this.settings.atmosphere = 'rain';
     if (!this.settings.cosmetics) this.settings.cosmetics = DEFAULT_COSMETICS;
@@ -418,6 +422,10 @@ class Controller {
     }
     if ('animations' in patch) next.animations = Boolean(patch.animations);
     if ('autoOpenLog' in patch) next.autoOpenLog = Boolean(patch.autoOpenLog);
+    if ('shareLogsConfirmed' in patch) {
+      if (typeof patch.shareLogsConfirmed !== 'boolean') throw new Error('Ungültige Einstellung für das Teilen von Logs.');
+      next.shareLogsConfirmed = patch.shareLogsConfirmed;
+    }
     if ('discordRpc' in patch) {
       next.discordRpc = Boolean(patch.discordRpc);
       this.discordRpc.setEnabled(next.discordRpc);
@@ -679,6 +687,39 @@ class Controller {
       }
     }
     return false;
+  }
+  // Lädt das Log einer Instanz geschwärzt zu mclo.gs hoch. Die UI übergibt nur die Instanz-ID.
+  async shareLog(instanceId, { window } = {}) {
+    const inst = typeof instanceId === 'string' ? this.logs.get(instanceId) : null;
+    if (!inst) throw new Error('Log nicht gefunden.');
+    if (!inst.logs.length) throw new Error('Das Log ist leer.');
+    if (!this.settings.shareLogsConfirmed && !this.shareConsentGiven) {
+      const answer = await this.confirmShare(window, this.settings.language);
+      if (!answer?.ok) return { canceled: true };
+      this.shareConsentGiven = true;
+      if (answer.remember) { this.settings.shareLogsConfirmed = true; await this.saveSettings(); }
+    }
+    const secrets = this.accounts.flatMap(a => [a.accessToken, a.refreshToken]);
+    const lines = redactLog(inst.logs, { secrets, usernames: localUsernames() });
+    const mode = inst.profileMode === 'caeser' ? 'Caeser Client' : inst.profileMode === 'fabric' ? 'Fabric' : 'Vanilla';
+    const status = inst.status === 'running' ? 'läuft' : inst.status === 'crashed' ? 'abgestürzt' : 'beendet';
+    const header = [
+      `[Caeser Client] Launcher-Version: ${this.appVersion}`,
+      `[Caeser Client] Spielart: ${mode} | Minecraft: ${inst.profileVersion || 'unbekannt'}`,
+      `[Caeser Client] Status: ${status} | Exit-Code: ${inst.exitCode ?? '–'}`,
+      ''
+    ];
+    const { url, id } = await uploadToMclogs(buildShareText(header, lines));
+    this.sharedLogs.set(id, url);
+    this.writeClipboard(url);
+    return { url, id };
+  }
+  // Öffnet einen zuvor geteilten Link; die UI übergibt nur die mclo.gs-ID.
+  async openSharedLog(id) {
+    const url = typeof id === 'string' ? this.sharedLogs.get(id) : null;
+    if (!url || !url.startsWith(MCLOGS_URL_PREFIX)) throw new Error('Link nicht gefunden.');
+    await this.openExternal(url);
+    return true;
   }
   async autoFixCrash(action) {
     return executeAutoFix(action, this);

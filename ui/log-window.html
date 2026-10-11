@@ -222,6 +222,24 @@
       margin-left: 4px;
       font-variant-numeric: tabular-nums;
     }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .btn:disabled:hover { background: rgba(255, 255, 255, 0.04); color: #c0b5cf; border-color: var(--surface-border); }
+
+    /* Meldung nach dem Teilen über mclo.gs */
+    .share-notice {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 14px;
+      font-size: 11px;
+      color: #4ce68f;
+      background: rgba(0, 230, 118, 0.08);
+      border-bottom: 1px solid rgba(0, 230, 118, 0.25);
+      flex-shrink: 0;
+    }
+    .share-notice.error { color: #ff4766; background: rgba(255, 71, 102, 0.08); border-bottom-color: rgba(255, 71, 102, 0.25); }
+    .share-notice span { overflow-wrap: anywhere; }
+    .share-notice .btn { margin-left: auto; flex-shrink: 0; }
 
     /* Terminal Console */
     .terminal-container {
@@ -569,6 +587,9 @@
           <button class="btn" id="btn-copy" title="Gesamtes Log in die Zwischenablage kopieren">
             <span id="btn-copy-text">📋 Kopieren</span>
           </button>
+          <button class="btn" id="btn-share" title="Log geschwärzt auf mclo.gs hochladen und Link kopieren" disabled>
+            <span id="btn-share-text">🔗 Teilen</span>
+          </button>
           <button class="btn" id="btn-save" title="Log der gewählten Instanz als Textdatei speichern" disabled>
             <span id="btn-save-text">💾 Speichern</span>
           </button>
@@ -577,6 +598,11 @@
           </button>
           <span class="line-counter" id="line-counter">0 Zeilen</span>
         </div>
+      </div>
+
+      <div class="share-notice" id="share-notice" hidden>
+        <span id="share-notice-text"></span>
+        <button class="btn" id="btn-share-open">Im Browser öffnen</button>
       </div>
 
       <div class="terminal-container" id="terminal">
@@ -641,6 +667,12 @@
         statusStarting: 'Startet …',
         statusStopped: (code) => code !== undefined && code !== null ? `Beendet (Code ${code})` : 'Beendet',
         statusCrashed: (code) => `Abgestürzt (Exit-Code ${code ?? 1})`,
+        share: '🔗 Teilen',
+        shareTitle: 'Log geschwärzt auf mclo.gs hochladen und Link kopieren',
+        sharing: '⏳ Lädt hoch …',
+        shareCopied: (url) => `Link kopiert: ${url}`,
+        shareFailed: (msg) => `Teilen fehlgeschlagen: ${msg}`,
+        shareOpen: 'Im Browser öffnen',
         save: '💾 Speichern',
         saveTitle: 'Log der gewählten Instanz als Textdatei speichern',
         saved: '✓ Gespeichert',
@@ -670,6 +702,12 @@
         statusStarting: 'Starting …',
         statusStopped: (code) => code !== undefined && code !== null ? `Exited (Code ${code})` : 'Exited',
         statusCrashed: (code) => `Crashed (exit code ${code ?? 1})`,
+        share: '🔗 Share',
+        shareTitle: 'Upload the redacted log to mclo.gs and copy the link',
+        sharing: '⏳ Uploading …',
+        shareCopied: (url) => `Link copied: ${url}`,
+        shareFailed: (msg) => `Sharing failed: ${msg}`,
+        shareOpen: 'Open in browser',
         save: '💾 Save',
         saveTitle: 'Save the selected instance log as a text file',
         saved: '✓ Saved',
@@ -700,6 +738,9 @@
       document.getElementById('btn-autoscroll').querySelector('span').textContent = t('autoScroll');
       document.getElementById('btn-copy').title = t('copyTitle');
       document.getElementById('btn-copy-text').textContent = t('copy');
+      document.getElementById('btn-share').title = t('shareTitle');
+      document.getElementById('btn-share-text').textContent = t('share');
+      document.getElementById('btn-share-open').textContent = t('shareOpen');
       document.getElementById('btn-save').title = t('saveTitle');
       document.getElementById('btn-save-text').textContent = t('save');
       document.getElementById('btn-clear').title = t('clearTitle');
@@ -730,6 +771,11 @@
     const btnCopy = document.getElementById('btn-copy');
     const btnClear = document.getElementById('btn-clear');
     const btnSave = document.getElementById('btn-save');
+    const btnShare = document.getElementById('btn-share');
+    const shareNotice = document.getElementById('share-notice');
+    let shareBusy = false;
+    let lastShare = null;
+    let shareNoticeTimer = null;
     const instancesListEl = document.getElementById('instances-list');
     const instancesCountBadge = document.getElementById('instances-count-badge');
     const btnSidebarStopp = document.getElementById('btn-sidebar-stopp');
@@ -751,6 +797,16 @@
     function updateActionButtons() {
       const hasLog = Boolean(activeInstanceId && instances.some(i => i.id === activeInstanceId) && allLines.length);
       btnSave.disabled = !hasLog;
+      btnShare.disabled = !hasLog || shareBusy;
+    }
+
+    function showShareNotice(text, withLink) {
+      document.getElementById('share-notice-text').textContent = text;
+      document.getElementById('btn-share-open').hidden = !withLink;
+      shareNotice.classList.toggle('error', !withLink);
+      shareNotice.hidden = false;
+      clearTimeout(shareNoticeTimer);
+      shareNoticeTimer = setTimeout(() => { shareNotice.hidden = true; }, 15000);
     }
 
     function classifyLine(text) {
@@ -1034,6 +1090,27 @@
       const origText = copySpan.textContent;
       copySpan.textContent = t('copied');
       setTimeout(() => { copySpan.textContent = origText; }, 1800);
+    };
+
+    // Teilen: nur die Instanz-ID geht an den Hauptprozess; er schwärzt, lädt hoch und kopiert den Link
+    btnShare.onclick = async () => {
+      if (!activeInstanceId || shareBusy) return;
+      const span = document.getElementById('btn-share-text');
+      shareBusy = true; updateActionButtons(); span.textContent = t('sharing');
+      try {
+        const res = await window.logApi?.shareInstance(activeInstanceId);
+        if (res?.ok && res.url) {
+          lastShare = res;
+          showShareNotice(t('shareCopied', res.url), true);
+        } else if (!res?.ok) {
+          showShareNotice(t('shareFailed', res?.error || '?'), false);
+        }
+      } finally {
+        shareBusy = false; span.textContent = t('share'); updateActionButtons();
+      }
+    };
+    document.getElementById('btn-share-open').onclick = () => {
+      if (lastShare?.id) window.logApi?.openShared(lastShare.id);
     };
 
     // Speichern: nur die Instanz-ID geht an den Hauptprozess, der Pfad kommt aus dem nativen Dialog

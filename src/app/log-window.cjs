@@ -214,6 +214,19 @@ function createLogWindowManager(controller, deps = electron) {
     }
   });
 
+  // Teilen über mclo.gs: der Hauptprozess holt, schwärzt und lädt die Zeilen selbst hoch.
+  ipcMain.handle('log-share-instance', async (event, instanceId) => {
+    if (!fromLogWindow(event)) return { ok: false, error: 'Zugriff verweigert.' };
+    try { return { ok: true, ...await controller.shareLog(instanceId, { window: logWin }) }; }
+    catch (error) { return { ok: false, error: error.message }; }
+  });
+
+  ipcMain.handle('log-share-open-link', async (event, id) => {
+    if (!fromLogWindow(event)) return { ok: false, error: 'Zugriff verweigert.' };
+    try { await controller.openSharedLog(id); return { ok: true }; }
+    catch (error) { return { ok: false, error: error.message }; }
+  });
+
   ipcMain.handle('log-window-action', (event, action) => {
     if (!fromLogWindow(event)) return;
     if (action === 'minimize') logWin.minimize();
