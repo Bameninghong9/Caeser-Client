@@ -3,15 +3,25 @@ import { renderSkinSnapshot, SkinRenderer } from './skin-renderer.js';
 import { t } from './i18n.js';
 
 let renamingSkinId = null;
+let renamingSkinVariant = 'classic';
 
-function openRenameDialog(id, currentName) {
+function syncModelPillsUI() {
+  const classicBtn = $('skin-model-classic');
+  const slimBtn = $('skin-model-slim');
+  if (classicBtn) classicBtn.classList.toggle('active', renamingSkinVariant === 'classic');
+  if (slimBtn) slimBtn.classList.toggle('active', renamingSkinVariant === 'slim');
+}
+
+function openRenameDialog(id, currentName, currentVariant = 'classic') {
   renamingSkinId = id;
+  renamingSkinVariant = (currentVariant === 'slim' || currentVariant === 'classic') ? currentVariant : 'classic';
   const dialog = $('rename-skin-dialog');
   const input = $('rename-skin-input');
   if (input) {
     input.value = currentName;
     setTimeout(() => { input.focus(); input.select(); }, 50);
   }
+  syncModelPillsUI();
   if (dialog) dialog.showModal();
 }
 
@@ -47,13 +57,15 @@ export async function detectSkinVariant(textureSrc) {
   });
 }
 
-function createSkinWindowCard({ id, name, subtitle, isActive, canDelete, canRename, skinTexture }) {
+function createSkinWindowCard({ id, name, subtitle, isActive, canDelete, canRename, skinTexture, variant }) {
   const card = document.createElement('div');
   card.className = 'skin-card skin-window-card' + (isActive ? ' active' : '');
   card.dataset.skinId = id;
   card.tabIndex = 0;
   card.setAttribute('role', 'button');
   card.setAttribute('aria-label', `${name} (${isActive ? t('activeBadge') : t('selectSkin')})`);
+
+  let effectiveVariant = (variant === 'slim' || variant === 'classic') ? variant : null;
 
   // Character preview box
   const preview = document.createElement('div');
@@ -74,7 +86,7 @@ function createSkinWindowCard({ id, name, subtitle, isActive, canDelete, canRena
     }
   });
 
-  // Top right actions: Pencil (rename), Cloud (sync to Mojang), & Trash (delete)
+  // Top right actions: Pencil (rename/model), Cloud (sync to Mojang), & Trash (delete)
   const actions = document.createElement('div');
   actions.className = 'skin-window-actions';
 
@@ -82,12 +94,17 @@ function createSkinWindowCard({ id, name, subtitle, isActive, canDelete, canRena
     const renameBtn = document.createElement('button');
     renameBtn.type = 'button';
     renameBtn.className = 'skin-action-btn edit-name';
-    renameBtn.title = t('renameSkin');
-    renameBtn.setAttribute('aria-label', t('renameSkin'));
+    renameBtn.title = t('renameSkin', 'Skin anpassen (Name & Modell)');
+    renameBtn.setAttribute('aria-label', t('renameSkin', 'Skin anpassen'));
     renameBtn.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
-    renameBtn.onclick = (e) => {
+    renameBtn.onclick = async (e) => {
       e.stopPropagation();
-      openRenameDialog(id, name);
+      let v = effectiveVariant;
+      if (!v && skinTexture) {
+        v = await detectSkinVariant(skinTexture);
+        effectiveVariant = v;
+      }
+      openRenameDialog(id, name, v || 'classic');
     };
     actions.append(renameBtn);
   }
@@ -105,12 +122,12 @@ function createSkinWindowCard({ id, name, subtitle, isActive, canDelete, canRena
         uploadBtn.disabled = true;
         uploadBtn.style.opacity = '0.5';
         toast('Skin wird bei Mojang für deinen Account hochgeladen...', false);
-        const variant = await detectSkinVariant(skinTexture);
-        const res = await api.uploadSkinToAccount(id, variant);
+        const curVariant = effectiveVariant || await detectSkinVariant(skinTexture);
+        const res = await api.uploadSkinToAccount(id, curVariant);
         uploadBtn.disabled = false;
         uploadBtn.style.opacity = '';
         if (res?.uploaded) {
-          toast(`✓ "${name}" ist jetzt offiziell bei Mojang aktiv & für alle Spieler sichtbar!`);
+          toast(`✓ "${name}" (${curVariant === 'slim' ? 'Slim' : 'Classic'}) ist jetzt offiziell bei Mojang aktiv & für alle Spieler sichtbar!`);
         } else if (res?.reset) {
           toast('✓ Skin bei Mojang auf Standard zurückgesetzt.');
         } else if (res?.error) {
@@ -160,18 +177,36 @@ function createSkinWindowCard({ id, name, subtitle, isActive, canDelete, canRena
   nameEl.textContent = name;
   nameEl.title = name;
 
-  info.append(nameEl);
+  const metaRow = document.createElement('div');
+  metaRow.className = 'skin-window-meta';
+
+  const badge = document.createElement('span');
+  badge.className = 'skin-variant-badge ' + (effectiveVariant === 'slim' ? 'slim' : 'classic');
+  badge.textContent = effectiveVariant === 'slim' ? 'Slim 3px' : 'Classic 4px';
+  metaRow.append(badge);
+
+  if (!effectiveVariant && skinTexture) {
+    detectSkinVariant(skinTexture).then(detected => {
+      effectiveVariant = detected;
+      if (card.isConnected) {
+        badge.className = 'skin-variant-badge ' + (detected === 'slim' ? 'slim' : 'classic');
+        badge.textContent = detected === 'slim' ? 'Slim 3px' : 'Classic 4px';
+      }
+    });
+  }
+
+  info.append(nameEl, metaRow);
   card.append(preview, info);
 
   // Click on card selects it immediately & syncs with Mojang
   card.onclick = () => {
     action(async () => {
       toast('Skin wird ausgewählt und synchronisiert...', false);
-      const variant = await detectSkinVariant(skinTexture);
-      const res = await api.selectSkin(id, variant);
+      const curVariant = effectiveVariant || await detectSkinVariant(skinTexture);
+      const res = await api.selectSkin(id, curVariant);
       update(res);
       if (res?.uploadResult?.uploaded) {
-        toast(`✓ ${name} ausgewählt & offiziell auf Minecraft-Account übertragen (für alle sichtbar)!`);
+        toast(`✓ ${name} (${curVariant === 'slim' ? 'Slim' : 'Classic'}) ausgewählt & offiziell auf Minecraft-Account übertragen (für alle sichtbar)!`);
       } else if (res?.uploadResult?.reset) {
         toast('✓ Skin auf Standard zurückgesetzt.');
       } else if (res?.uploadResult?.error) {
@@ -202,6 +237,7 @@ async function renderSkins() {
   const account = currentAccount();
   const hiddenSkins = state?.settings?.hiddenSkins || [];
   const skinNames = state?.settings?.skinNames || {};
+  const skinVariants = state?.settings?.skinVariants || {};
 
   // Render skins library grid
   const grid = $('skins-grid');
@@ -216,7 +252,8 @@ async function renderSkins() {
       isActive: activeSkinId === 'steve',
       canDelete: true,
       canRename: true,
-      skinTexture: 'assets/skins/steve.png'
+      skinTexture: 'assets/skins/steve.png',
+      variant: skinVariants.steve || 'classic'
     }));
   }
 
@@ -229,7 +266,8 @@ async function renderSkins() {
       isActive: activeSkinId === 'account',
       canDelete: true,
       canRename: true,
-      skinTexture: avatarData?.skin || null
+      skinTexture: avatarData?.skin || null,
+      variant: skinVariants.account || null
     }));
   }
 
@@ -241,7 +279,8 @@ async function renderSkins() {
       isActive: activeSkinId === s.id,
       canDelete: true,
       canRename: true,
-      skinTexture: s.data
+      skinTexture: s.data,
+      variant: s.variant
     }));
   }
 
@@ -464,7 +503,17 @@ export function initSkins() {
     };
   }
 
-  // Rename skin dialog setup
+  // Model pill buttons in skin edit dialog
+  $('skin-model-classic')?.addEventListener('click', () => {
+    renamingSkinVariant = 'classic';
+    syncModelPillsUI();
+  });
+  $('skin-model-slim')?.addEventListener('click', () => {
+    renamingSkinVariant = 'slim';
+    syncModelPillsUI();
+  });
+
+  // Rename & model skin dialog setup
   const renameForm = $('rename-skin-form');
   if (renameForm) {
     renameForm.onsubmit = async (e) => {
@@ -473,8 +522,13 @@ export function initSkins() {
       const newName = input ? input.value.trim() : '';
       if (!renamingSkinId || !newName) return;
       action(async () => {
-        update(await api.renameSkin(renamingSkinId, newName));
-        toast('Skin-Name geändert.');
+        const res = await api.renameSkin(renamingSkinId, newName, renamingSkinVariant);
+        update(res);
+        if (res?.uploadResult?.uploaded) {
+          toast(`✓ "${newName}" (${renamingSkinVariant === 'slim' ? 'Slim 3px' : 'Classic 4px'}) gespeichert & bei Mojang aktiv!`);
+        } else {
+          toast(`✓ "${newName}" (${renamingSkinVariant === 'slim' ? 'Slim 3px' : 'Classic 4px'}) angepasst.`);
+        }
         $('rename-skin-dialog')?.close();
       });
     };

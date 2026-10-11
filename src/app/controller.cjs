@@ -50,7 +50,7 @@ class Controller {
         state: 'Bereit zum Spielen',
         assets: {
           large_image: CAESER_DISCORD_ICON,
-          large_text: `Caeser Client v${this.appVersion || '0.3.23'}`
+          large_text: `Caeser Client v${this.appVersion || '0.3.30'}`
         }
       });
     } else {
@@ -70,12 +70,14 @@ class Controller {
     cosmetics: this.settings.cosmetics || DEFAULT_COSMETICS,
     wallpaper: this.wallpaper ? { name: this.wallpaper.name, type: this.wallpaper.type, opacity: this.settings.customWallpaper?.opacity ?? 40, blur: this.settings.customWallpaper?.blur ?? 0 } : null }; }
   async getSkins() { return this.skins; }
-  async addSkin({ name, data }) {
+  async addSkin({ name, data, variant }) {
     if (!data || typeof data !== 'string') throw new Error('Ungültiges Bild für Minecraft-Skin.');
+    const detected = this.detectSkinVariant(data);
     const skin = {
       id: 'skin-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
       name: (name || 'Custom Skin').slice(0, 32),
       data,
+      variant: (variant === 'slim' || variant === 'classic') ? variant : detected,
       createdAt: Date.now()
     };
     this.skins = [...this.skins, skin];
@@ -101,18 +103,42 @@ class Controller {
     await this.saveSettings();
     return this.state();
   }
-  async renameSkin(id, newName) {
+  async renameSkin(id, newName, newVariant) {
     const trimmed = (newName || '').trim().slice(0, 32);
     if (!trimmed) throw new Error('Skin-Name darf nicht leer sein.');
+    const validVariant = (newVariant === 'slim' || newVariant === 'classic') ? newVariant : null;
+
     if (id === 'steve' || id === 'account') {
       if (!this.settings.skinNames) this.settings.skinNames = {};
       this.settings.skinNames[id] = trimmed;
+      if (validVariant) {
+        if (!this.settings.skinVariants) this.settings.skinVariants = {};
+        this.settings.skinVariants[id] = validVariant;
+      }
     } else {
-      this.skins = this.skins.map(s => s.id === id ? { ...s, name: trimmed } : s);
+      this.skins = this.skins.map(s => {
+        if (s.id !== id) return s;
+        return {
+          ...s,
+          name: trimmed,
+          variant: validVariant || s.variant || this.detectSkinVariant(s.data)
+        };
+      });
       await this.store.write('skins.json', this.skins);
     }
     await this.saveSettings();
-    return this.state();
+
+    let uploadResult = null;
+    if (validVariant && this.settings.activeSkinId === id && id !== 'account') {
+      try {
+        uploadResult = await this.uploadSkinToAccount(id, validVariant);
+      } catch (e) {
+        uploadResult = { ok: false, error: e.message };
+      }
+    }
+
+    const state = this.state();
+    return { ...state, uploadResult };
   }
   detectSkinVariant(dataUrlOrBuffer) {
     let buf = dataUrlOrBuffer;
@@ -178,7 +204,7 @@ class Controller {
     const b64 = comma >= 0 ? skin.data.slice(comma + 1) : skin.data;
     const buffer = Buffer.from(b64, 'base64');
 
-    const chosenVariant = (variant === 'slim' || variant === 'classic') ? variant : this.detectSkinVariant(buffer);
+    const chosenVariant = (variant === 'slim' || variant === 'classic') ? variant : (skin.variant || this.detectSkinVariant(buffer));
 
     const formData = new FormData();
     formData.append('variant', chosenVariant);
@@ -218,9 +244,14 @@ class Controller {
   async selectSkin(id, variant) {
     this.settings.activeSkinId = id;
     await this.saveSettings();
+    let chosenVariant = (variant === 'slim' || variant === 'classic') ? variant : null;
+    if (!chosenVariant) {
+      const skin = this.skins.find(s => s.id === id);
+      chosenVariant = skin?.variant || (this.settings.skinVariants && this.settings.skinVariants[id]) || null;
+    }
     let uploadResult = null;
     try {
-      uploadResult = await this.uploadSkinToAccount(id, variant);
+      uploadResult = await this.uploadSkinToAccount(id, chosenVariant);
     } catch (e) {
       uploadResult = { ok: false, error: e.message };
     }
@@ -339,13 +370,13 @@ class Controller {
             details: `Spielt ${profile.name}`,
             state: `${profile.version} (${profile.mode === 'caeser' ? 'Caeser Client' : profile.mode === 'fabric' ? 'Fabric' : 'Vanilla'})`,
             timestamps: { start: Math.floor(Date.now() / 1000) },
-            assets: { large_image: CAESER_DISCORD_ICON, large_text: `Caeser Client v${this.appVersion || '0.3.23'}` }
+            assets: { large_image: CAESER_DISCORD_ICON, large_text: `Caeser Client v${this.appVersion || '0.3.30'}` }
           });
         } else {
           this.discordRpc.setActivity({
             details: 'Im Hauptmenü',
             state: 'Bereit zum Spielen',
-            assets: { large_image: CAESER_DISCORD_ICON, large_text: `Caeser Client v${this.appVersion || '0.3.23'}` }
+            assets: { large_image: CAESER_DISCORD_ICON, large_text: `Caeser Client v${this.appVersion || '0.3.30'}` }
           });
         }
       }
@@ -486,7 +517,7 @@ class Controller {
             timestamps: { start: Math.floor(Date.now() / 1000) },
             assets: {
               large_image: CAESER_DISCORD_ICON,
-              large_text: `Caeser Client v${this.appVersion || '0.3.23'}`
+              large_text: `Caeser Client v${this.appVersion || '0.3.30'}`
             }
           }, child.pid);
         }
@@ -546,7 +577,7 @@ class Controller {
           this.discordRpc.setActivity({
             details: 'Im Hauptmenü',
             state: 'Bereit zum Spielen',
-            assets: { large_image: CAESER_DISCORD_ICON, large_text: `Caeser Client v${this.appVersion || '0.3.23'}` }
+            assets: { large_image: CAESER_DISCORD_ICON, large_text: `Caeser Client v${this.appVersion || '0.3.30'}` }
           });
         }
 

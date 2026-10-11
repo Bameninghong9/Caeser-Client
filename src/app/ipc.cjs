@@ -27,7 +27,7 @@ function register(controller, win, pageURL, logManager) {
   handle('skins-get', () => controller.getSkins());
   handle('skin-add', input => controller.addSkin(input));
   handle('skin-remove', id => controller.removeSkin(id));
-  handle('skin-rename', input => controller.renameSkin(input.id, input.name));
+  handle('skin-rename', input => controller.renameSkin(input.id, input.name, input.variant));
   handle('skin-select', input => {
     if (input && typeof input === 'object') return controller.selectSkin(input.id, input.variant);
     return controller.selectSkin(input);

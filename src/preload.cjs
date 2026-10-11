@@ -15,7 +15,7 @@ contextBridge.exposeInMainWorld('caeser', {
   installCaeserMod: id=>invoke('caeser-mod-install',id),
   setCurseForgeKey: key=>invoke('curseforge-key',key), accountAvatar: id=>invoke('account-avatar',id),
   getSkins: () => invoke('skins-get'), addSkin: input => invoke('skin-add', input),
-  removeSkin: id => invoke('skin-remove', id), renameSkin: (id, name) => invoke('skin-rename', { id, name }),
+  removeSkin: id => invoke('skin-remove', id), renameSkin: (id, name, variant) => invoke('skin-rename', typeof id === 'object' ? id : { id, name, variant }),
   selectSkin: (id, variant) => invoke('skin-select', typeof id === 'object' ? id : { id, variant }),
   uploadSkinToAccount: (id, variant) => invoke('skin-upload-account', typeof id === 'object' ? id : { id, variant }),
   playerSkinGet: name => invoke('player-skin-get', name),
