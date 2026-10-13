@@ -24,7 +24,8 @@ const DEFAULT_COSMETICS = {
   pet: { type: 'none', color: '#38bdf8', customPlayer: '', customSkinUrl: '' }
 };
 const PACKAGE_VERSION = require('../../package.json').version;
-const CAESER_DISCORD_ICON = 'https://cdn.discordapp.com/app-icons/1558499625999007914/8a6c22196782afd29a05440238daf206.png';
+// Art-Asset der Discord-App (Developer Portal → Rich Presence → Art Assets): weißes C, gut sichtbar im dunklen Discord
+const CAESER_DISCORD_ICON = 'caeser_logo';
 
 class Controller {
   constructor({ directory, encryption, resources, appVersion, emit, openBrowser, confirmShare, writeClipboard, openExternal, curseforgeAccess: access = curseforgeAccess }) {

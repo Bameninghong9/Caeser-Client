@@ -145,6 +145,17 @@ const assert = require('node:assert/strict');
     assert.equal(await logWin.locator('#btn-save').isDisabled(), true);
     await logWin.locator('#btn-autoscroll').click();
     assert.equal(await logWin.locator('#btn-autoscroll').evaluate(el => el.classList.contains('active')), false);
+    // Jedes weitere init-logs (z. B. nach "×" an einer beendeten Instanz) muss die Liste neu zeichnen
+    const sendInitLogs = ids => app.evaluate(({ BrowserWindow }, list) => {
+      const win = BrowserWindow.getAllWindows().find(w => w.webContents.getURL().endsWith('log-window.html'));
+      const instances = list.map(id => ({ id, profileName: id, accountName: 'P', status: 'stopped', exitCode: 0, startTime: 1, endTime: 2, lineCount: 0 }));
+      win.webContents.send('init-logs', { instances, activeInstanceId: list[0] || null, logs: [], language: 'de' });
+    }, ids);
+    await sendInitLogs(['ui-a', 'ui-b', 'ui-c']);
+    await logWin.waitForFunction(() => document.querySelectorAll('.instance-card .btn-card-close').length === 3);
+    await sendInitLogs(['ui-a', 'ui-c']);
+    await logWin.waitForFunction(() => document.querySelectorAll('.instance-card').length === 2);
+    assert.deepEqual(logConsole.filter(m => /Cannot set properties|Uncaught/i.test(m)), []);
     const scripts = await logWin.evaluate(() => ({ inline: document.querySelectorAll('script:not([src])').length, external: [...document.scripts].map(s => s.getAttribute('src')), csp: document.querySelector('meta[http-equiv="Content-Security-Policy"]').content }));
     assert.deepEqual(scripts.external, ['log-window.js']); assert.equal(scripts.inline, 0);
     assert.doesNotMatch(scripts.csp, /unsafe-inline'[^;]*;?\s*style-src/); assert.match(scripts.csp, /script-src 'self';/);

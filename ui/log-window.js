@@ -99,7 +99,10 @@ function applyLanguage(lang) {
   document.getElementById('btn-clear').title = t('clearTitle');
   document.getElementById('btn-clear-text').textContent = t('clear');
   document.getElementById('sidebar-title-text').textContent = t('instancesTitle');
-  document.getElementById('no-instances-notice').textContent = t('noInstancesNotice');
+  // Der Platzhalter aus dem HTML verschwindet beim ersten renderInstancesList(); ohne Prüfung
+  // bricht jedes spätere init-logs hier ab und die Liste wird nicht mehr neu gezeichnet.
+  const staticNotice = document.getElementById('no-instances-notice');
+  if (staticNotice) staticNotice.textContent = t('noInstancesNotice');
   document.getElementById('btn-sidebar-stopp-text').textContent = t('stopBtn');
   document.getElementById('btn-sidebar-stopp').title = t('stopTitle');
 
