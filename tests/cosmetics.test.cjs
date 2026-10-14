@@ -115,3 +115,31 @@ test('Cosmetics - launcher prepare writes cosmetics.json to instance config fold
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+test('Cosmetics - Spielstart behält alle Felder der Mod in cosmetics.json (face, emotes, Emote-Rad, Kill-Effekt)', () => {
+  const { mergeModCosmetics } = require('../src/game/launcher.cjs');
+  const existing = {
+    wings: { type: 'angel', color: '#ffffff' },
+    head: { type: 'crown', color: '#facc15' },
+    pet: { type: 'none', color: '#38bdf8' },
+    accessories: ['minime_hand'],
+    face: { type: 'sunglasses' },
+    emotes: { list: ['T_POSE', 'BUTTERFLY'] },
+    wheel_slots: ['t_pose', 'butterfly'],
+    killEffect: 'KILL_ANVIL',
+    killEffectSettings: { showOthers: true, sounds: false }
+  };
+  const merged = mergeModCosmetics(existing, { wings: { type: 'dragon' }, face: { type: 'skull_mask' } });
+  assert.deepEqual(merged.face, { type: 'sunglasses' });
+  assert.deepEqual(merged.emotes, existing.emotes);
+  assert.deepEqual(merged.wheel_slots, existing.wheel_slots);
+  assert.equal(merged.killEffect, 'KILL_ANVIL');
+  assert.deepEqual(merged.killEffectSettings, existing.killEffectSettings);
+  assert.equal(merged.wings.type, 'angel', 'Wert aus der Mod-Datei hat Vorrang');
+  assert.deepEqual(merged.accessories, ['minime_hand']);
+
+  const fresh = mergeModCosmetics({}, { head: { type: 'halo' } });
+  assert.equal(fresh.head.type, 'halo');
+  assert.equal(fresh.wings.type, 'none');
+  assert.deepEqual(mergeModCosmetics(['kaputt'], null).accessories, []);
+});

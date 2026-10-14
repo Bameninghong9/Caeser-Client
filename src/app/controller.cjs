@@ -17,6 +17,7 @@ const { LogStore } = require('../game/log-store.cjs');
 const { curseforgeAccess } = require('../mods/curseforge-config.cjs');
 const { redactLog, buildShareText, uploadToMclogs, localUsernames, MCLOGS_URL_PREFIX } = require('../shared/log-share.cjs');
 const { validateSkinDataUrl, validateSkinName, MAX_SKINS } = require('../shared/skins.cjs');
+const { CaeserApi } = require('../backend/caeser-api.cjs');
 const themes = ['Cyberpunk','Ultraviolet','Toxic','Inferno','Glacier','Bloodmoon','Aurora','Bubblegum','Limelight','Sunset','Electric','Nebula','Goldrush','Emerald','Plasma','Crimson'];
 const DEFAULT_COSMETICS = {
   wings: { type: 'none', color: '#a855f7' },
@@ -46,6 +47,8 @@ class Controller {
     this.discordRpc = new DiscordRpcClient();
     this.bridge = new AccountBridge(this); // Ingame-Account-Switcher, läuft nur solange eine Instanz läuft
     this.skinSyncs = new Map(); // accountId -> laufender Skin-Sync
+    // Caeser-Backend (Capes): Session-Tokens pro Konto nur im Speicher, Minecraft-Token frisch über freshAccount
+    this.caeserApi = new CaeserApi({ directory, account: id => this.freshAccount(id) });
     this.mods = new Mods({root:this.root, profiles:this.profiles, curseforgeAccess:()=>this.curseforgeAccess(),
       assertIdle:()=>{if(this.busy) throw new Error('Ein Startvorgang läuft bereits.');},report:data=>this.emit('mod-progress',data)});
   }
@@ -519,6 +522,15 @@ class Controller {
     await this.store.write('settings.json', next); this.settings = next; return this.state();
   }
   async login() { await this.addAccount(); return this.state(); }
+  // Konto mit gültigem Minecraft-Token (ohne id: aktives Konto). Für Aufrufe an Mojang und das Caeser-Backend.
+  async freshAccount(id = this.settings.activeAccount) {
+    let account = this.accounts.find(a => a.id === id);
+    if (!account) throw new Error('Kein Minecraft-Konto angemeldet.');
+    try { account = await auth.refresh(account); }
+    catch { throw new Error('Das Minecraft-Konto konnte nicht erneuert werden. Bitte melde es im Launcher neu an.'); }
+    if (account !== this.accounts.find(a => a.id === account.id)) await this.updateAccount(account);
+    return account;
+  }
   // foreground: Anmeldung über die Account-Brücke, das Microsoft-Fenster erscheint ohne (minimiertes) Hauptfenster als Parent.
   async addAccount({ foreground = false } = {}) {
     if (this.loginController) throw new Error('Eine Anmeldung läuft bereits.');
@@ -534,6 +546,7 @@ class Controller {
   async removeAccount(id) {
     if (this.busy || this.loginController) throw new Error('Bitte warte, bis der laufende Vorgang abgeschlossen ist.');
     this.accounts = this.accounts.filter(a => a.id !== id);
+    this.caeserApi.forget(id);
     if (this.settings.activeAccount === id) this.settings.activeAccount = this.accounts[0]?.id || '';
     await this.saveAccounts(); await this.saveSettings(); return this.state();
   }

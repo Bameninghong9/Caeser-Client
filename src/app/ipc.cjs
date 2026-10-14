@@ -5,6 +5,7 @@ const launcher = require('../game/launcher.cjs');
 const { instanceKey } = require('../data/profiles.cjs');
 const { inside } = require('../shared/net.cjs');
 const { avatar } = require('../auth/avatar.cjs');
+const { createCapesHandlers } = require('./capes-ipc.cjs');
 function register(controller, win, pageURL, logManager) {
   const handle = (name, fn) => ipcMain.handle(name, async (event, value) => {
     if (event.senderFrame !== win.webContents.mainFrame || event.senderFrame.url !== pageURL) throw new Error('Zugriff verweigert.');
@@ -51,6 +52,8 @@ function register(controller, win, pageURL, logManager) {
     const data = nativeImage.createFromBuffer(buffer).toDataURL();
     return controller.addSkin({ name: baseName, data });
   });
+  // Capes: Eingaben werden in capes-ipc.cjs geprüft, Backend- und Mojang-Aufrufe laufen über controller.caeserApi
+  for (const [name, fn] of Object.entries(createCapesHandlers({ controller, dialog, window: win }))) handle(name, fn);
   handle('profile-select', async id => { await controller.profiles.select(id); return controller.state(); });
   handle('profile-remove', async id => {
     if (controller.busy || controller.game || controller.mods.busy) throw new Error('Bitte zuerst Minecraft und laufende Mod-Downloads beenden.');

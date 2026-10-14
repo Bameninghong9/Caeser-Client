@@ -20,7 +20,7 @@ export function navigate(page) {
   document.dispatchEvent(new CustomEvent('page-navigate', { detail: page }));
 }
 export function updatePageLabel() {
-  const map = { play: t('navPlay'), profiles: t('navProfiles'), profile: t('profile', 'Profil'), skins: t('navSkins'), gallery: t('navGallery', 'Galerie'), settings: t('navSettings') };
+  const map = { play: t('navPlay'), profiles: t('navProfiles'), profile: t('profile', 'Profil'), skins: t('navSkins'), gallery: t('navGallery', 'Galerie'), capes: t('navCapes'), settings: t('navSettings') };
   $('page-label').textContent = map[currentPage] || currentPage;
 }
 document.addEventListener('language-change', () => {

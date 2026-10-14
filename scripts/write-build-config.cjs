@@ -1,9 +1,11 @@
 // Schreibt src/generated/build-config.cjs aus Umgebungsvariablen (vor `npm start` und `npm run build`).
 //   CAESER_CURSEFORGE_PROXY  HTTPS-URL eines eigenen Proxys, der den Schlüssel serverseitig anhängt (empfohlen)
 //   CAESER_CURSEFORGE_KEY    eigener, bei CurseForge beantragter Projektschlüssel (wird mit ausgeliefert)
+//   CAESER_API_URL           HTTPS-Basis-URL des Caeser-Backends (Capes); ohne Angabe der Produktivserver
 // Der Schlüssel wird nie auf der Konsole ausgegeben. Die erzeugte Datei steht in .gitignore.
 const fs = require('node:fs');
 const path = require('node:path');
+const { DEFAULT_CAESER_API_URL, validateCaeserApiUrl } = require('../src/backend/caeser-config.cjs');
 
 const DEFAULT_OUT = path.join(__dirname, '..', 'src', 'generated', 'build-config.cjs');
 
@@ -19,7 +21,8 @@ function readConfig(env) {
     if (url.username || url.password || url.search || url.hash) throw new Error('CAESER_CURSEFORGE_PROXY darf keine Zugangsdaten, Parameter oder Anker enthalten.');
   }
   if (key && (key.length > 1024 || /[\r\n]/.test(key))) throw new Error('CAESER_CURSEFORGE_KEY ist ungültig (Zeilenumbruch oder länger als 1024 Zeichen).');
-  return { curseforge: { proxy: proxy.replace(/\/+$/, ''), key } };
+  const apiUrl = validateCaeserApiUrl((env.CAESER_API_URL || '').trim() || DEFAULT_CAESER_API_URL);
+  return { curseforge: { proxy: proxy.replace(/\/+$/, ''), key }, caeser: { apiUrl } };
 }
 
 function writeBuildConfig({ env = process.env, outFile = DEFAULT_OUT, log = console.log, warn = console.warn } = {}) {
@@ -30,6 +33,7 @@ function writeBuildConfig({ env = process.env, outFile = DEFAULT_OUT, log = cons
   const { proxy, key } = config.curseforge;
   if (!proxy && !key) warn('WARNUNG: Build ohne CurseForge. Weder CAESER_CURSEFORGE_PROXY noch CAESER_CURSEFORGE_KEY ist gesetzt; nur Modrinth ist verfügbar.');
   else log(`CurseForge-Build-Konfiguration: Proxy ${proxy ? `gesetzt (${new URL(proxy).host})` : 'nein'}, Schlüssel gesetzt: ${key ? 'ja' : 'nein'}${proxy && key ? ' (Proxy hat Vorrang)' : ''}.`);
+  log(`Caeser-Backend: ${new URL(config.caeser.apiUrl).host}.`);
   return config;
 }
 

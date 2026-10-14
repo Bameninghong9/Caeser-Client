@@ -2,6 +2,7 @@ const { _electron: electron } = require('playwright');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const assert = require('node:assert/strict');
+const { encodePng } = require('../src/backend/cape-image.cjs');
 (async () => {
   const output = path.resolve('test-results'); await fs.mkdir(output,{recursive:true});
   const profile = await fs.mkdtemp(path.join(output,'profiles-ui-'));
@@ -16,7 +17,7 @@ const assert = require('node:assert/strict');
   };
   try {
     let page = await boot();
-    assert.equal(await page.locator('nav [data-page]').count(),4);
+    assert.equal(await page.locator('nav [data-page]').count(),5);
     await page.locator('[data-page="profiles"]').click(); await page.locator('#new-profile').click();
     await page.locator('#profile-name').fill('Survival mit Freunden');
     await page.locator('#profile-version').selectOption('1.21.11'); await page.locator('[data-loader="fabric"]').click();
@@ -166,7 +167,86 @@ const assert = require('node:assert/strict');
     await page.locator('.profile-card').filter({hasText:'Meine Survival-Welt'}).locator('.delete-profile').click();
     await page.locator('#confirm-delete').click(); await page.waitForFunction(()=>!document.getElementById('delete-dialog').open);
     assert.equal((await page.evaluate(()=>window.caeser.state())).profiles.some(p=>p.id===savedId),false);
+    // Capes-Seite mit gemocktem Caeser-Backend und Mojang (fetch im Hauptprozess ersetzt)
+    const capeAccount = {id:'0123456789abcdef0123456789abcdef',name:'CapeTester',refreshToken:'synthetic-refresh-token',accessToken:'synthetic-access-token',expiresAt:Date.now()+3600000,clientId:'test'};
+    const capeEncrypted = await app.evaluate(({ safeStorage }, accounts) => Array.from(safeStorage.encryptString(JSON.stringify(accounts))), [capeAccount]);
+    await fs.writeFile(path.join(profile,'accounts.bin'),Buffer.from(capeEncrypted));
+    const capeSettings=JSON.parse(await fs.readFile(settingsFile,'utf8')); capeSettings.activeAccount=capeAccount.id; await fs.writeFile(settingsFile,JSON.stringify(capeSettings));
+    await app.close(); app=null; page=await boot();
+    const capePng = encodePng({ width: 64, height: 32, data: new Uint8Array(64 * 32 * 4).map((_, i) => i % 4 === 3 ? 255 : (i % 4 === 0 ? 180 : 60)) }).toString('base64');
+    await app.evaluate((_, { png, session }) => {
+      const base = 'https://caeser-backend.caeser-backend.workers.dev', original = globalThis.fetch, image = Buffer.from(png, 'base64');
+      const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+      const mockState = { capeId: null, mine: [], ids: ['c0ffee0000000000000000000000000000000000000000000000000000000001', 'c0ffee0000000000000000000000000000000000000000000000000000000002'] };
+      globalThis.__capeMock = mockState;
+      globalThis.fetch = async (url, options = {}) => {
+        const target = new URL(String(url)), method = options.method || 'GET';
+        if (target.origin === base) {
+          if (target.pathname === '/v1/auth/challenge') return reply({ challengeId: 'ch', serverId: 'srv' });
+          if (target.pathname === '/v1/auth/verify') return reply({ token: session, uuid: '0123456789abcdef0123456789abcdef', name: 'CapeTester', expiresAt: Date.now() + 3600000 });
+          if (target.pathname.endsWith('.png')) return new Response(image, { headers: { 'Content-Type': 'image/png' } });
+          if (options.headers?.Authorization !== `Bearer ${session}`) return reply({ error: 'Nicht angemeldet.', code: 'UNAUTHORIZED' }, 401);
+          if (target.pathname === '/v1/me') return reply({ uuid: '0123456789abcdef0123456789abcdef', name: 'CapeTester', jetons: 300, capeId: mockState.capeId });
+          if (target.pathname === '/v1/capes/config') return reply({ uploadPrice: 100, maxPending: 3, maxTotal: 10 });
+          if (target.pathname === '/v1/capes' && method === 'GET') return reply({ items: [{ id: mockState.ids[0], name: 'Sternenhimmel', ownerName: 'Anna', uses: 12, createdAt: 1 }, { id: mockState.ids[1], name: 'Lava', ownerName: 'Ben', uses: 1, createdAt: 2 }], nextCursor: null });
+          if (target.pathname === '/v1/capes' && method === 'POST') { const cape = { id: 'c0ffee00000000000000000000000000000000000000000000000000000000ff', name: target.searchParams.get('name'), ownerName: 'CapeTester', uses: 0, status: 'pending', pricePaid: 100 }; mockState.mine.unshift(cape); return reply({ cape, jetons: 200 }, 201); }
+          if (target.pathname === '/v1/capes/mine') return reply({ items: [...mockState.mine, { id: 'c0ffee0000000000000000000000000000000000000000000000000000000003', name: 'Abgelehnt', ownerName: 'CapeTester', uses: 0, status: 'rejected', reason: 'Fremdes Logo', pricePaid: 100 }] });
+          if (target.pathname === '/v1/capes/favorites') return reply({ items: [] });
+          if (target.pathname === '/v1/me/cape') { mockState.capeId = JSON.parse(options.body).capeId; return reply({ capeId: mockState.capeId }); }
+          return reply({ ok: true });
+        }
+        if (String(url) === 'https://sessionserver.mojang.com/session/minecraft/join') return new Response(null, { status: 204 });
+        if (target.href.startsWith('https://api.minecraftservices.com/minecraft/profile')) {
+          const active = method === 'PUT' ? JSON.parse(options.body).capeId : method === 'DELETE' ? null : '11111111-2222-3333-4444-555555555555';
+          return reply({ id: '0123456789abcdef0123456789abcdef', name: 'CapeTester', skins: [], capes: [{ id: '11111111-2222-3333-4444-555555555555', state: active === '11111111-2222-3333-4444-555555555555' ? 'ACTIVE' : 'INACTIVE', url: 'https://textures.minecraft.net/texture/abcdef0123456789abcdef', alias: 'Migrator' }] });
+        }
+        if (target.hostname === 'textures.minecraft.net') return new Response(image);
+        return original(url, options);
+      };
+    }, { png: capePng, session: 'synthetic-caeser-session' });
+    await page.locator('[data-page="capes"]').click();
+    assert.equal(await page.locator('#page-label').textContent(), 'Capes');
+    await page.locator('#capes-grid .cape-card').nth(1).waitFor({ timeout: 15000 });
+    assert.equal(await page.locator('.cape-active-badge').count(), 0);
+    await page.waitForFunction(() => [...document.querySelectorAll('#capes-grid .cape-art')].every(el => el.style.backgroundImage.startsWith('url("data:image/png;base64,')));
+    await page.locator('#capes-grid .cape-card').filter({ hasText: 'Sternenhimmel' }).click();
+    await page.locator('#capes-grid .cape-card.active .cape-active-badge').waitFor();
+    assert.equal(await page.locator('#capes-grid .cape-card.active .cape-active-badge').textContent(), 'AKTIV');
+    assert.match(await page.locator('#capes-grid .cape-card.active').textContent(), /Sternenhimmel/);
+    assert.equal(await app.evaluate(() => globalThis.__capeMock.capeId), 'c0ffee0000000000000000000000000000000000000000000000000000000001');
+    await page.evaluate(() => document.body.classList.add('no-animation'));
+    await page.screenshot({ path: path.join(output, 'capes.png') });
+    await page.locator('[data-capes-tab="mine"]').click();
+    await page.locator('#capes-grid .cape-status.rejected').waitFor();
+    assert.equal(await page.locator('#capes-info').textContent(), '1 von 10 Uploads');
+    assert.match(await page.locator('#capes-grid .cape-card.rejected').textContent(), /Fremdes Logo.*◆ 100 erstattet/);
+    assert.equal(await page.locator('#capes-toolbar').isVisible(), false);
+    await page.locator('[data-capes-tab="favorites"]').click();
+    await page.waitForFunction(() => document.querySelector('#capes-grid .capes-empty')?.textContent.includes('Favoriten'));
+    await page.locator('[data-capes-tab="vanilla"]').click();
+    await page.locator('#capes-grid [data-vanilla-id="11111111-2222-3333-4444-555555555555"].active').waitFor();
+    await page.locator('#capes-grid [data-vanilla-id="none"]').click();
+    await page.locator('#capes-grid [data-vanilla-id="none"].active').waitFor();
+    // Hochladen: Dateidialog gemockt, synthetisches 64x32-Cape
+    const uploadFile = path.join(output, 'upload-cape.png'); await fs.writeFile(uploadFile, Buffer.from(capePng, 'base64'));
+    await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, uploadFile);
+    await page.locator('#capes-upload-button').click();
+    await page.waitForFunction(() => document.getElementById('cape-upload-dialog').open);
+    assert.equal(await page.locator('#cape-name').inputValue(), 'upload-cape');
+    await page.waitForFunction(() => document.getElementById('cape-price').textContent.includes('Kostet ◆ 100'));
+    assert.equal(await page.locator('#cape-upload-submit').isDisabled(), true);
+    await page.locator('#cape-name').fill('Mein Test-Cape'); await page.locator('#cape-consent').check();
+    await page.locator('#cape-upload-submit').click();
+    await page.waitForFunction(() => document.getElementById('app-confirm-dialog').open);
+    assert.equal(await page.locator('#app-confirm-title').textContent(), 'Schon jetzt für dich auswählen?');
+    await page.locator('#app-confirm-ok').click();
+    await page.locator('#capes-grid .cape-card.active').filter({ hasText: 'Mein Test-Cape' }).locator('.cape-status.pending').waitFor();
+    assert.equal(await page.locator('[data-capes-tab="mine"]').getAttribute('aria-selected'), 'true');
+    assert.equal(await page.evaluate(() => document.documentElement.outerHTML.includes('synthetic-caeser-session') || document.documentElement.outerHTML.includes('synthetic-access-token')), false);
+    await page.locator('[data-capes-tab="all"]').click();
+    await page.locator('#capes-grid .cape-card').nth(1).waitFor();
+    assert.equal(await page.locator('#capes-grid .cape-active-badge').count(), 0, 'neues Cape ist aktiv, nicht mehr die Galerie-Karte');
     assert.deepEqual(errors,[]);
-    console.log('UI passed: profile create/edit/delete, isolated settings, MB slider, real catalogue, mode selection, restart persistence, account gate, client-ID validation, theme changes, layout.');
+    console.log('UI passed: profile create/edit/delete, isolated settings, MB slider, real catalogue, mode selection, restart persistence, account gate, client-ID validation, theme changes, layout, capes page.');
   } finally { if(app) await app.close(); }
 })().catch(error=>{console.error(error);process.exitCode=1;});

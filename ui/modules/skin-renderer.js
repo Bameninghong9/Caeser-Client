@@ -187,7 +187,8 @@ function buildBoxMesh(gl, width, height, depth, expand = 0) {
 }
 
 // Generate box vertices [pos(3), uv(2), normal(3)] -> 8 floats per vertex
-function buildBox(width, height, depth, uvMap, expand = 0) {
+// texWidth/texHeight: UV grid (skins 64x64, capes 64x32; HD textures are normalized to the same grid)
+function buildBox(width, height, depth, uvMap, expand = 0, texWidth = 64, texHeight = 64) {
   const w = width + expand * 2, h = height + expand * 2, d = depth + expand * 2;
   const x0 = -w / 2, x1 = w / 2;
   const y0 = -h / 2, y1 = h / 2;
@@ -199,8 +200,8 @@ function buildBox(width, height, depth, uvMap, expand = 0) {
 
   function addFace(p0, p1, p2, p3, uv, norm) {
     const [u, v, uw, vh] = uv;
-    const u0 = u / 64, u1 = (u + uw) / 64;
-    const v0 = v / 64, v1 = (v + vh) / 64;
+    const u0 = u / texWidth, u1 = (u + uw) / texWidth;
+    const v0 = v / texHeight, v1 = (v + vh) / texHeight;
 
     vertices.push(
       p0[0], p0[1], p0[2], u0, v0, norm[0], norm[1], norm[2],
@@ -227,6 +228,19 @@ function buildBox(width, height, depth, uvMap, expand = 0) {
   addFace([x1,y1,z1], [x1,y0,z1], [x1,y0,z0], [x1,y1,z0], uvMap.left, [1, 0, 0]);
 
   return { vertices: new Float32Array(vertices), indices: new Uint16Array(indices) };
+}
+
+// Cape box 10x16x1 with standard cape UVs (64x32 grid). Outer side (-Z, away from the body) = x 1–11, y 1–17.
+function buildCapeMesh(gl) {
+  const uv = { front: [12,1,10,16], back: [1,1,10,16], top: [1,0,10,1], bottom: [11,0,10,1], right: [11,1,1,16], left: [0,1,1,16] };
+  const { vertices, indices } = buildBox(10, 16, 1, uv, 0, 64, 32);
+  const vbo = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+  const ibo = gl.createBuffer();
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+  return { vbo, ibo, count: indices.length };
 }
 
 // Default Steve 64x64 skin generator (canvas)
@@ -289,7 +303,7 @@ export class SkinRenderer {
       head: { type: 'none', color: '#facc15' },
       pet: { type: 'none', color: '#38bdf8' }
     };
-    this.drag = { active: false, lastX: 0, lastY: 0, rotX: 0, rotY: 0 };
+    this.drag = { active: false, lastX: 0, lastY: 0, rotX: 0, rotY: Number.isFinite(options.rotY) ? options.rotY : 0 };
     const glOpts = { alpha: true, antialias: true, preserveDrawingBuffer: Boolean(options.preserveDrawingBuffer) };
     this.gl = canvas.getContext('webgl', glOpts) || canvas.getContext('experimental-webgl', glOpts);
     this.isSupported = Boolean(this.gl);
@@ -297,6 +311,8 @@ export class SkinRenderer {
     this.texture = null;
     this.petTexture = null;
     this.currentPetSkinUrl = null;
+    this.capeTexture = null;
+    this.capeUrl = null;
     this.mouse = { x: 0, y: 0, targetX: 0, targetY: 0 };
     this.animFrame = null;
     this.lastTime = 0;
@@ -353,6 +369,37 @@ export class SkinRenderer {
       this.petTexture = null;
     }
     if (this.options?.static) this.render(0);
+  }
+
+  // Optional cape texture (data: or blob: URL); null removes the cape.
+  setCape(capeUrl) {
+    this.capeUrl = capeUrl || null;
+    if (!capeUrl || !this.gl) {
+      this.capeTexture = null;
+      this.redrawIfIdle();
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      if (this.capeUrl !== capeUrl) return;
+      const gl = this.gl;
+      if (!this.capeTexture) this.capeTexture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, this.capeTexture);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.bindTexture(gl.TEXTURE_2D, this.texture);
+      this.redrawIfIdle();
+    };
+    img.onerror = () => { if (this.capeUrl === capeUrl) { this.capeTexture = null; this.redrawIfIdle(); } };
+    img.src = capeUrl;
+  }
+
+  redrawIfIdle() {
+    if (this.gl && (this.options?.static || this.paused || !this.animFrame)) this.render(this.lastFrameTime || 0);
   }
 
   setPetSkin(skinDataUrl) {
@@ -563,6 +610,8 @@ export class SkinRenderer {
         pos: part.pos
       };
     });
+
+    if (!this.capeMesh) this.capeMesh = buildCapeMesh(gl);
 
     if (!this.cosmeticMeshes) {
       // Pre-create 3D cosmetic meshes
@@ -960,6 +1009,29 @@ export class SkinRenderer {
 
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.ibo);
       gl.drawElements(gl.TRIANGLES, mesh.count, gl.UNSIGNED_SHORT, 0);
+    }
+
+    // Cape on the back: hinge at the top of the torso, tilted backwards, gently swinging while idle
+    if (this.capeTexture && this.capeMesh && torsoMat) {
+      const swing = Math.sin(time * 0.0017) * 0.05 + Math.sin(time * 0.0031) * 0.02;
+      mat4Copy(model, torsoMat);
+      mat4Translate(model, model, 0, 6, -2);
+      mat4RotateX(model, model, 0.16 + swing);
+      mat4Translate(model, model, 0, -8, -0.5);
+      mat4Multiply(mvp, proj, model);
+      gl.uniformMatrix4fv(this.uniforms.mvp, false, mvp);
+      gl.uniformMatrix4fv(this.uniforms.model, false, model);
+      gl.bindTexture(gl.TEXTURE_2D, this.capeTexture);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.capeMesh.vbo);
+      gl.enableVertexAttribArray(this.attribs.position);
+      gl.vertexAttribPointer(this.attribs.position, 3, gl.FLOAT, false, 32, 0);
+      gl.enableVertexAttribArray(this.attribs.texCoord);
+      gl.vertexAttribPointer(this.attribs.texCoord, 2, gl.FLOAT, false, 32, 12);
+      gl.enableVertexAttribArray(this.attribs.normal);
+      gl.vertexAttribPointer(this.attribs.normal, 3, gl.FLOAT, false, 32, 20);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.capeMesh.ibo);
+      gl.drawElements(gl.TRIANGLES, this.capeMesh.count, gl.UNSIGNED_SHORT, 0);
+      gl.bindTexture(gl.TEXTURE_2D, this.texture);
     }
 
     // Render 3D Cosmetics if active
