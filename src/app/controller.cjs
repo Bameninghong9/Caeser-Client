@@ -53,7 +53,7 @@ class Controller {
       assertIdle:()=>{if(this.busy) throw new Error('Ein Startvorgang läuft bereits.');},report:data=>this.emit('mod-progress',data)});
   }
   async load() {
-    this.settings = { theme: 'Ultraviolet', customAccent: '', atmosphere: 'nebula', glow: 'subtle', javaPath: '', activeAccount: '', activeSkinId: 'account', hiddenSkins: [], skinNames: {}, language: 'de', animations: true, autoOpenLog: true, discordRpc: true, shareLogsConfirmed: false, customWallpaper: null, cosmetics: DEFAULT_COSMETICS, ...await this.store.read('settings.json', {}) };
+    this.settings = { theme: 'Ultraviolet', customAccent: '', atmosphere: 'nebula', glow: 'subtle', seasonal: 'auto', javaPath: '', activeAccount: '', activeSkinId: 'account', hiddenSkins: [], skinNames: {}, language: 'de', animations: true, autoOpenLog: true, discordRpc: true, shareLogsConfirmed: false, customWallpaper: null, cosmetics: DEFAULT_COSMETICS, ...await this.store.read('settings.json', {}) };
     if (this.settings.atmosphere === 'obsidian') this.settings.atmosphere = 'nebula';
     if (this.settings.atmosphere === 'aurora') this.settings.atmosphere = 'rain';
     if (!this.settings.cosmetics) this.settings.cosmetics = DEFAULT_COSMETICS;
@@ -451,6 +451,11 @@ class Controller {
     if ('glow' in patch) {
       if (!['off','subtle','neon'].includes(patch.glow)) throw new Error('Ungültige Glow-Einstellung.');
       next.glow = patch.glow;
+    }
+    if ('seasonal' in patch) {
+      // Saisonale Deko: 'auto' folgt dem Datum, 'on'/'off' ist die Wahl des Nutzers.
+      if (!['auto', 'on', 'off'].includes(patch.seasonal)) throw new Error('Ungültige Einstellung für saisonale Deko.');
+      next.seasonal = patch.seasonal;
     }
     if ('animations' in patch) next.animations = Boolean(patch.animations);
     if ('autoOpenLog' in patch) next.autoOpenLog = Boolean(patch.autoOpenLog);

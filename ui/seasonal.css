@@ -1,0 +1,123 @@
+/* Saisonale Deko (Halloween). Nur aktiv mit body.season-halloween, ändert kein Layout.
+   Alles liegt im Hintergrund (#wallpaper-backdrop) hinter den Bedienelementen und ist nicht klickbar. */
+:root{--season-pumpkin:#f97316;--season-ember:#fb923c;--season-toxic:#a3e635;--season-moon:#e9e6da;--season-header:101px;--season-aside:96px;
+  --season-pumpkin-img:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 7.2c-1.9-1.3-5.6-1.2-7.6 1.3S2.4 15 3.9 18.1s4.6 3.5 8.1 3.5 6.6-.4 8.1-3.5 1.4-7.1-.5-9.6-5.7-2.6-7.6-1.3z' fill='%23f97316'/%3E%3Cpath d='M12 7.4c-1.6 1.6-2 9.4 0 14.1M12 7.4c1.6 1.6 2 9.4 0 14.1M7.6 8.1c-2.2 2.6-2.4 9.6.4 13M16.4 8.1c2.2 2.6 2.4 9.6-.4 13' fill='none' stroke='%237c2d12' stroke-width='.9' stroke-linecap='round' opacity='.55'/%3E%3Cpath d='M12 7.3c0-2.1.6-3.4 2.2-4.6' fill='none' stroke='%2365a30d' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E")}
+@media(min-width:1300px){:root{--season-header:107px;--season-aside:104px}}
+@media(min-width:1700px){:root{--season-header:113px;--season-aside:110px}}
+
+/* Titelleiste: Kürbis-Linie und kleiner Kürbis hinter dem Titel (inline, verschiebt keine Bedienelemente) */
+body.season-halloween .titlebar{border-bottom-color:color-mix(in srgb,var(--season-pumpkin) 42%,transparent)}
+body.season-halloween .titlebar>span::after{content:'';display:inline-block;width:13px;height:13px;margin-left:8px;vertical-align:-3px;background:no-repeat center/contain var(--season-pumpkin-img)}
+
+/* Deko-Ebene */
+.season-layer{position:absolute;inset:0;z-index:5;pointer-events:none;overflow:hidden;contain:strict}
+.season-layer svg{display:block;fill:none;stroke:none;width:100%;height:auto}
+.season-layer>*{position:absolute}
+
+/* Dunkler, kälterer Hintergrund mit kräftiger Vignette */
+.season-shade{inset:0;background:radial-gradient(ellipse 75% 70% at 52% 38%,transparent 30%,rgba(2,2,8,.62) 100%),linear-gradient(rgba(6,9,24,.34),rgba(4,5,14,.2))}
+
+/* Seltenes, weiches Wetterleuchten: ein einzelner Puls alle 43 s, geringe Helligkeit, nur im Hintergrund */
+.season-flash{inset:0;opacity:0;background:radial-gradient(ellipse 85% 65% at 58% 6%,rgba(205,218,255,.38),rgba(160,175,240,.1) 55%,transparent 80%);animation:season-flash 43s ease-out infinite 12s}
+@keyframes season-flash{0%,96.6%{opacity:0}97.1%{opacity:1}98.4%{opacity:.3}100%{opacity:0}}
+
+/* Vollmond mit Schein, Wolken ziehen langsam davor */
+.season-moon-wrap{left:47%;top:calc(var(--season-header) - 40px);width:320px;height:180px;overflow:hidden;-webkit-mask:radial-gradient(ellipse 50% 50%,#000 60%,transparent 100%);mask:radial-gradient(ellipse 50% 50%,#000 60%,transparent 100%)}
+.season-moon{position:absolute;left:100px;top:30px;width:116px;height:116px;border-radius:50%;opacity:.62;
+  background:radial-gradient(circle at 34% 40%,rgba(160,152,132,.35) 0 9%,transparent 10%),radial-gradient(circle at 62% 28%,rgba(160,152,132,.3) 0 6%,transparent 7%),radial-gradient(circle at 58% 66%,rgba(160,152,132,.28) 0 12%,transparent 13%),radial-gradient(circle at 40% 36%,#f6f3e8,var(--season-moon) 55%,#b9b29e 100%);
+  box-shadow:0 0 40px 10px rgba(220,226,255,.14),0 0 120px 40px rgba(170,182,255,.07)}
+.season-cloud{position:absolute;left:0;width:230px;height:30px;border-radius:50%;background:rgba(22,20,34,.82);filter:blur(7px);animation:season-cloud 95s linear infinite}
+.season-cloud-1{top:62px}
+.season-cloud-2{top:108px;width:180px;height:24px;background:rgba(28,26,42,.7);animation-duration:140s;animation-delay:-80s}
+@keyframes season-cloud{from{transform:translateX(-250px)}to{transform:translateX(340px)}}
+
+/* Fledermäuse */
+.season-bat{left:0;top:0;opacity:0;will-change:transform,opacity}
+.season-layer .season-bat svg{fill:rgba(10,7,15,.94);stroke:rgba(214,200,240,.32);stroke-width:.6;stroke-linejoin:round;animation:season-flap .42s ease-in-out infinite alternate;transform-origin:50% 60%}
+.season-bat-1{width:36px;top:15%;animation:season-fly-a 28s linear infinite 2s}
+.season-bat-2{width:26px;top:27%;animation:season-fly-b 35s linear infinite 8s}
+.season-bat-3{width:20px;top:10%;animation:season-fly-a 41s linear infinite 15s}
+.season-bat-4{width:24px;top:40%;animation:season-fly-b 49s linear infinite 22s}
+.season-bat-5{width:17px;top:21%;animation:season-fly-a 33s linear infinite 19s}
+.season-bat-6{width:30px;top:33%;animation:season-fly-a 57s linear infinite 31s}
+.season-bat-7{width:15px;top:13%;animation:season-fly-b 38s linear infinite 27s}
+@keyframes season-flap{from{transform:scaleY(1)}to{transform:scaleY(.5)}}
+@keyframes season-fly-a{0%{transform:translate(-8vw,0);opacity:0}3%{opacity:.85}18%{transform:translate(42vw,-4vh)}38%{transform:translate(108vw,3vh);opacity:.85}39%,100%{transform:translate(108vw,3vh);opacity:0}}
+@keyframes season-fly-b{0%{transform:translate(108vw,6vh) scaleX(-1);opacity:0}3%{opacity:.7}20%{transform:translate(52vw,1vh) scaleX(-1)}40%{transform:translate(-8vw,-3vh) scaleX(-1);opacity:.7}41%,100%{transform:translate(-8vw,-3vh) scaleX(-1);opacity:0}}
+
+/* Geist: schwebt gelegentlich halbtransparent durchs Bild und verblasst */
+.season-ghost{left:0;top:0;width:52px;opacity:0;will-change:transform,opacity;animation:season-ghost 46s linear infinite 5s}
+.season-ghost svg{animation:season-bob 3.4s ease-in-out infinite alternate;filter:drop-shadow(0 0 12px rgba(200,215,255,.45)) blur(.4px)}
+@keyframes season-ghost{0%{transform:translate(14vw,58vh);opacity:0}6%{opacity:.34}16%{transform:translate(31vw,49vh)}26%{transform:translate(48vw,56vh)}36%{transform:translate(66vw,46vh);opacity:.3}42%{transform:translate(76vw,50vh);opacity:0}100%{transform:translate(76vw,50vh);opacity:0}}
+@keyframes season-bob{from{transform:translateY(-6px) rotate(-3deg)}to{transform:translateY(6px) rotate(3deg)}}
+
+/* Nebel: hinter und vor der Friedhof-Silhouette, langsam wabernd */
+.season-fog{left:-25%;right:-25%;will-change:transform}
+.season-fog-back{bottom:-30px;height:300px;opacity:.95;background:radial-gradient(ellipse 30% 50% at 20% 72%,rgba(150,145,185,.16),transparent 70%),radial-gradient(ellipse 36% 46% at 56% 80%,rgba(130,124,170,.14),transparent 70%),radial-gradient(ellipse 28% 44% at 86% 74%,rgba(150,145,185,.13),transparent 70%),radial-gradient(ellipse 55% 34% at 46% 100%,color-mix(in srgb,var(--season-pumpkin) 11%,transparent),transparent 72%);animation:season-fog-a 46s ease-in-out infinite alternate}
+.season-fog-front{bottom:-50px;height:170px;opacity:.9;background:radial-gradient(ellipse 34% 55% at 30% 70%,rgba(170,165,200,.13),transparent 70%),radial-gradient(ellipse 30% 50% at 72% 76%,rgba(160,155,195,.12),transparent 70%);animation:season-fog-b 34s ease-in-out infinite alternate}
+@keyframes season-fog-a{from{transform:translateX(-6%) scaleY(1)}to{transform:translateX(6%) scaleY(1.12)}}
+@keyframes season-fog-b{from{transform:translateX(5%) scaleY(1.1)}to{transform:translateX(-5%) scaleY(.94)}}
+
+/* Friedhof-Silhouette */
+.season-layer .season-graveyard{left:0;bottom:0;width:100%;height:220px;opacity:.94}
+
+/* Leuchtende Augenpaare im Dunkeln, tauchen selten auf und blinzeln */
+.season-eyes{display:flex;gap:6px;opacity:0;animation:season-eyes 17s ease-in-out infinite}
+.season-eye{width:7px;height:4px;border-radius:50%;background:var(--season-toxic);box-shadow:0 0 6px 1px color-mix(in srgb,var(--season-toxic) 70%,transparent),0 0 16px 4px color-mix(in srgb,var(--season-toxic) 22%,transparent);animation:inherit;animation-name:season-blink}
+.season-eyes-1{left:24%;bottom:58px;animation-delay:3s}
+.season-eyes-2{left:77%;bottom:44px;animation-duration:23s;animation-delay:11s}
+.season-eyes-2 .season-eye{background:var(--season-ember);box-shadow:0 0 6px 1px color-mix(in srgb,var(--season-pumpkin) 70%,transparent),0 0 16px 4px color-mix(in srgb,var(--season-pumpkin) 22%,transparent)}
+.season-eyes-3{right:2.5%;top:46%;gap:5px;animation-duration:29s;animation-delay:19s}
+@keyframes season-eyes{0%,58%{opacity:0}62%,84%{opacity:.85}88%,100%{opacity:0}}
+@keyframes season-blink{0%,70%{transform:scaleY(1)}71%{transform:scaleY(.1)}72%,77%{transform:scaleY(1)}78%{transform:scaleY(.1)}79%,100%{transform:scaleY(1)}}
+
+/* Kürbislaternen mit flackerndem Kerzenschein */
+.season-lantern{width:34px}
+.season-lantern-1{left:31%;bottom:10px}
+.season-lantern-2{left:69%;bottom:16px;width:26px}
+.season-lantern-3{left:12%;bottom:22px;width:24px}
+.season-candle{position:absolute;inset:-70% -80% -30%;border-radius:50%;background:radial-gradient(ellipse at 50% 60%,color-mix(in srgb,var(--season-ember) 34%,transparent),transparent 62%);animation:season-flicker 2.8s linear infinite}
+.season-lantern svg,.season-play-pumpkin svg{position:relative;filter:drop-shadow(0 0 5px rgba(251,146,60,.45))}
+.season-face{animation:season-flicker 2.3s linear infinite}
+@keyframes season-flicker{0%{opacity:.62}12%{opacity:.85}21%{opacity:.55}34%{opacity:.92}46%{opacity:.66}58%{opacity:.88}71%{opacity:.56}84%{opacity:.8}100%{opacity:.62}}
+
+/* Kürbislaterne neben dem Podest der Startseite (absolut im Podest, hinter dem Skin) */
+.season-play-pumpkin{position:absolute;bottom:2px;left:calc(50% + 96px);width:34px;z-index:1;pointer-events:none}
+.season-play-pumpkin svg{display:block;width:100%;height:auto;fill:none;stroke:none}
+
+/* Spinnennetze: groß unten rechts, oben links und oben rechts im Inhaltsbereich */
+.season-layer .season-web{width:280px;height:280px}
+.season-layer .season-web-br{right:0;bottom:0;opacity:.9}
+.season-layer .season-web-tl{left:var(--season-aside);top:var(--season-header);width:170px;height:170px;opacity:.62;transform:scale(-1,-1)}
+.season-layer .season-web-tr{right:0;top:var(--season-header);width:150px;height:150px;opacity:.45;transform:scaleY(-1)}
+.season-web path{fill:none;stroke:rgba(226,218,244,.32);stroke-width:.7;stroke-linecap:round}
+.season-web .season-thread{stroke:rgba(226,218,244,.4);stroke-width:.5}
+.season-web .season-spider{fill:rgba(12,9,18,.94);stroke:color-mix(in srgb,var(--season-ember) 55%,transparent);stroke-width:.7}
+
+/* Spinne, die sich gelegentlich abseilt und wieder hochklettert */
+.season-dangler{left:77%;top:var(--season-header);width:28px;height:220px}
+.season-dangler-thread{position:absolute;left:50%;top:0;width:1px;height:190px;background:rgba(226,218,244,.38);transform-origin:top;transform:scaleY(.06);animation:season-thread 36s ease-in-out infinite 4s}
+.season-dangler-spider{position:absolute;left:0;top:0;width:28px;transform:translateY(4px);animation:season-drop 36s ease-in-out infinite 4s}
+@keyframes season-thread{0%,50%{transform:scaleY(.06)}64%,80%{transform:scaleY(1)}94%,100%{transform:scaleY(.06)}}
+@keyframes season-drop{0%,50%{transform:translateY(4px)}64%{transform:translateY(181px)}70%{transform:translateY(172px)}76%,80%{transform:translateY(181px)}94%,100%{transform:translateY(4px)}}
+
+/* Wenige, langsam fallende Herbstblätter */
+.season-leaf{top:0;width:16px;opacity:0;will-change:transform,opacity;animation:season-fall 30s linear infinite}
+.season-layer .season-leaf svg{animation:season-sway 4.5s ease-in-out infinite alternate}
+.season-leaf path{stroke:rgba(60,24,8,.5);stroke-width:.8;stroke-linecap:round}
+.season-leaf-1{left:18%;animation-duration:31s;animation-delay:-6s}
+.season-leaf-1 svg{fill:#c2410c}
+.season-leaf-2{left:55%;width:13px;animation-duration:38s;animation-delay:-21s}
+.season-leaf-2 svg{fill:#d97706}
+.season-leaf-3{left:80%;width:14px;animation-duration:44s;animation-delay:-33s}
+.season-leaf-3 svg{fill:#92400e}
+.season-leaf-4{left:38%;width:12px;animation-duration:36s;animation-delay:-14s}
+.season-leaf-4 svg{fill:#b45309}
+@keyframes season-fall{0%{transform:translate(0,-5vh) rotate(0);opacity:0}6%{opacity:.6}88%{opacity:.55}100%{transform:translate(-6vw,104vh) rotate(300deg);opacity:0}}
+@keyframes season-sway{from{transform:translateX(-14px) rotate(-18deg)}to{transform:translateX(14px) rotate(18deg)}}
+
+/* Ohne Animation (Ambient aus) oder bei reduzierter Bewegung: Bewegtes und Aufleuchten aus, Rest steht still */
+body.no-animation .season-bat,body.no-animation .season-leaf,body.no-animation .season-ghost,body.no-animation .season-flash,body.no-animation .season-eyes{display:none}
+@media (prefers-reduced-motion:reduce){
+  .season-bat,.season-leaf,.season-ghost,.season-flash,.season-eyes{display:none}
+  .season-fog,.season-cloud,.season-candle,.season-face,.season-dangler-thread,.season-dangler-spider{animation:none}}

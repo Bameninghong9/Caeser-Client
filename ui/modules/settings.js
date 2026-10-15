@@ -1,5 +1,6 @@
 import { $, api, model, update, onState, action, toast } from './common.js';
 import { applyLanguage, t } from './i18n.js';
+import { applySeasonal, nextSeasonalSetting } from './seasonal.js';
 const themes = [['Cyberpunk','#00d9ef'],['Ultraviolet','#b23cee'],['Toxic','#54ef00'],['Inferno','#ff7900'],['Glacier','#00c7ee'],['Bloodmoon','#ff0645'],['Aurora','#00e8b8'],['Bubblegum','#ff43d9'],['Limelight','#b5f800'],['Sunset','#ff008b'],['Electric','#3470f8'],['Nebula','#a647f2'],['Goldrush','#ffc600'],['Emerald','#00d99b'],['Plasma','#f22dcb'],['Crimson','#fa335f']];
 async function save(patch) { update(await api.settings(patch)); }
 
@@ -165,6 +166,12 @@ export function initSettings() {
     btn.onclick = () => action(() => save({ atmosphere: btn.dataset.atmo }));
   });
 
+  // Saisonale Deko (eigene Ebene, Theme und Akzent bleiben unberührt)
+  const seasonalSwitch = $('seasonal-decor');
+  if (seasonalSwitch) {
+    seasonalSwitch.onchange = () => action(() => save({ seasonal: nextSeasonalSetting(seasonalSwitch.checked) }));
+  }
+
   // Glow level presets
   document.querySelectorAll('.glow-btn').forEach(btn => {
     btn.onclick = () => action(() => save({ glow: btn.dataset.glow }));
@@ -208,6 +215,9 @@ export function initSettings() {
     document.body.classList.remove('glow-off', 'glow-subtle', 'glow-neon');
     document.body.classList.add(`glow-${glow}`);
     document.querySelectorAll('.glow-btn').forEach(b => b.classList.toggle('active', b.dataset.glow === glow));
+
+    const seasonalOn = applySeasonal(settings.seasonal || 'auto');
+    if (seasonalSwitch) seasonalSwitch.checked = seasonalOn;
 
     $('animations').checked = settings.animations;
     document.body.classList.toggle('no-animation', !settings.animations);
