@@ -4,6 +4,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const http = require('node:http');
+const zlib = require('node:zlib');
 const childProcess = require('node:child_process');
 const { EventEmitter } = require('node:events');
 const auth = require('../src/auth/microsoft.cjs');
@@ -19,9 +20,9 @@ const account = (id, name, n) => ({ id, name, accessToken: `access-token-${n}-ge
 async function setup(t) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'caeser-bridge-'));
   const original = { refresh: auth.refresh, login: sisu.login };
-  const events = [];
+  const events = [], emitted = [];
   const controller = new Controller({ directory: dir, encryption: fakeEncryption, resources: dir, appVersion: 'test', openBrowser: () => () => {},
-    emit: name => events.push(name) });
+    emit: (name, data) => { events.push(name); emitted.push({ name, data }); } });
   await controller.load();
   controller.discordRpc.setActivity = () => {}; controller.discordRpc.setEnabled = () => {};
   controller.bridge.log = { warn: () => {} };
@@ -34,7 +35,7 @@ async function setup(t) {
     await new Promise(r => setTimeout(r, 30));
     await fs.rm(dir, { recursive: true, force: true });
   });
-  return { controller, bridge: controller.bridge, events };
+  return { controller, bridge: controller.bridge, events, emitted };
 }
 // Rohe Anfrage mit frei wählbaren Headern (auch Host und Origin), damit die Schutzmaßnahmen prüfbar sind.
 function request(url, { method = 'GET', token, headers = {}, body } = {}) {
@@ -46,7 +47,7 @@ function request(url, { method = 'GET', token, headers = {}, body } = {}) {
     const req = http.request({ host: target.hostname, port: target.port, path: target.pathname, method, headers: all, agent: false }, res => {
       let data = ''; res.setEncoding('utf8');
       res.on('data', c => { data += c; });
-      res.on('end', () => resolve({ status: res.statusCode, type: res.headers['content-type'], body: data ? JSON.parse(data) : null, raw: data }));
+      res.on('end', () => resolve({ status: res.statusCode, type: res.headers['content-type'], headers: res.headers, body: data ? JSON.parse(data) : null, raw: data }));
     });
     req.on('error', reject);
     if (payload !== null) req.write(payload);
@@ -225,6 +226,162 @@ test('login: erfolgreiche Anmeldung setzt lastAddedId und meldet accounts-change
   assert.ok(list.body.accounts.some(a => a.id === ID_NEW && a.active === false));
   assert.ok(!list.raw.includes('access-token-3'));
   assert.ok(events.includes('accounts-changed'));
+});
+
+// --- „Skin speichern“: POST /v1/skins/import ---
+function pngChunk(type, data) {
+  const head = Buffer.alloc(8); head.writeUInt32BE(data.length, 0); head.write(type, 4, 'latin1');
+  const crc = Buffer.alloc(4); crc.writeUInt32BE(zlib.crc32(Buffer.concat([head.subarray(4), data])) >>> 0, 0);
+  return Buffer.concat([head, data, crc]);
+}
+// Gültiges PNG: seed füllt die Pixel (verschiedene Bilddaten), extra hängt einen tEXt-Chunk an (große, aber gültige Datei).
+function png({ width = 64, height = 64, seed = 1, extra = 0 } = {}) {
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4); ihdr[8] = 8; ihdr[9] = 6;
+  const row = Buffer.alloc(width * 4 + 1, seed); row[0] = 0; // Filtertyp 0
+  const chunks = [pngChunk('IHDR', ihdr), pngChunk('IDAT', zlib.deflateSync(Buffer.concat(Array(height).fill(row))))];
+  if (extra) chunks.push(pngChunk('tEXt', Buffer.concat([Buffer.from('Comment\0', 'latin1'), Buffer.alloc(extra, 0x78)])));
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), ...chunks, pngChunk('IEND', Buffer.alloc(0))]);
+}
+const skinPng = options => `data:image/png;base64,${png(options).toString('base64')}`;
+const importSkin = (url, token, body, options = {}) => request(`${url}/v1/skins/import`, { method: 'POST', token, body, ...options });
+
+test('skins/import: 201 speichert den Skin, ohne ihn zu aktivieren oder zu Mojang hochzuladen', async t => {
+  const { url, token, controller, emitted } = await started(t);
+  const calls = [], originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async u => { calls.push(String(u)); return new Response('{}'); };
+  auth.refresh = async acc => { calls.push(`refresh:${acc.id}`); return acc; };
+  controller.settings.activeSkinId = 'steve';
+  const res = await importSkin(url, token, { name: 'Notch', data: skinPng({ seed: 1 }), variant: 'slim' });
+  assert.equal(res.status, 201); assert.match(res.type, /^application\/json/);
+  const { id } = res.body.skin;
+  assert.match(id, /^skin-/);
+  assert.deepEqual(res.body, { skin: { id, name: 'Notch', variant: 'slim' }, duplicate: false });
+  assert.deepEqual(controller.skins.map(s => ({ id: s.id, name: s.name, variant: s.variant, data: s.data })), [{ id, name: 'Notch', variant: 'slim', data: skinPng({ seed: 1 }) }]);
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(controller.store.directory, 'skins.json'), 'utf8')).map(s => s.id), [id]);
+  assert.deepEqual(emitted.filter(e => e.name === 'skins-changed').map(e => e.data), [{ id, name: 'Notch', player: 'Notch' }]);
+  // Ohne Variante erkennt der Launcher sie selbst (in Node ohne nativeImage: classic); der Name wird getrimmt.
+  const auto = await importSkin(url, token, { name: '  jeb_ ', data: skinPng({ seed: 2 }) });
+  assert.equal(auto.status, 201);
+  assert.deepEqual([auto.body.skin.name, auto.body.skin.variant], ['jeb_', 'classic']);
+  assert.equal(controller.settings.activeSkinId, 'steve', 'aktiver Skin bleibt');
+  assert.equal(controller.settings.skinUploads, undefined);
+  assert.deepEqual(calls, [], 'kein Mojang-Upload, keine Token-Erneuerung');
+});
+
+test('skins/import: gleiche Bilddaten liefern 200 duplicate ohne neuen Eintrag', async t => {
+  const { url, token, controller, events } = await started(t);
+  const first = await importSkin(url, token, { name: 'Notch', data: skinPng({ seed: 1 }), variant: 'slim' });
+  assert.equal(first.status, 201);
+  await controller.renameSkin(first.body.skin.id, 'Lieblingsskin');
+  const again = await importSkin(url, token, { name: 'Dinnerbone', data: skinPng({ seed: 1 }), variant: 'classic' });
+  assert.equal(again.status, 200);
+  assert.deepEqual(again.body, { skin: { id: first.body.skin.id, name: 'Lieblingsskin', variant: 'slim' }, duplicate: true });
+  assert.equal(controller.skins.length, 1);
+  assert.equal(events.filter(e => e === 'skins-changed').length, 1, 'ohne Änderung kein Ereignis');
+  // Auch ein in der UI hinzugefügter Skin mit denselben Bilddaten zählt als vorhanden.
+  await controller.addSkin({ name: 'Eigener', data: skinPng({ seed: 7 }) });
+  const fromUi = await importSkin(url, token, { name: 'Notch', data: skinPng({ seed: 7 }) });
+  assert.equal(fromUi.status, 200);
+  assert.deepEqual([fromUi.body.skin.name, fromUi.body.duplicate], ['Eigener', true]);
+  assert.equal(controller.skins.length, 2);
+});
+
+test('skins/import: vergebener Name mit anderem Bild wird zu „Name (2)“, „Name (3)“ …', async t => {
+  const { url, token, controller } = await started(t);
+  const names = [];
+  for (const [name, seed] of [['Notch', 1], ['Notch', 2], ['notch', 3], ['A'.repeat(32), 4], ['A'.repeat(32), 5]]) {
+    const res = await importSkin(url, token, { name, data: skinPng({ seed }) });
+    assert.equal(res.status, 201); names.push(res.body.skin.name);
+  }
+  assert.deepEqual(names, ['Notch', 'Notch (2)', 'notch (3)', 'A'.repeat(32), `${'A'.repeat(28)} (2)`]);
+  assert.deepEqual(controller.skins.map(s => s.name), names);
+});
+
+test('skins/import: ungültiger Name, ungültiges Bild oder ungültige Variante liefern 400', async t => {
+  const { url, bridge, controller, events } = await started(t);
+  let n = 0; // eigenes Token pro Anfrage, damit die Drosselung nicht greift
+  const cases = [
+    [{ data: skinPng() }, /Spielername/],
+    [{ name: '', data: skinPng() }, /Spielername/],
+    [{ name: '   ', data: skinPng() }, /Spielername/],
+    [{ name: 'x'.repeat(33), data: skinPng() }, /Spielername/],
+    [{ name: 42, data: skinPng() }, /Spielername/],
+    [{ name: 'Böse\u0007', data: skinPng() }, /Spielername/],
+    [{ name: 'Notch', data: skinPng(), variant: 'wide' }, /Variante/],
+    [{ name: 'Notch' }, /PNG/],
+    [{ name: 'Notch', data: skinPng({ width: 128, height: 128 }) }, /64x64 oder 64x32/],
+    [{ name: 'Notch', data: 'data:image/jpeg;base64,/9j/4AAQSkZJRg==' }, /PNG/],
+    [{ name: 'Notch', data: 'data:image/png;base64,<script>' }, /Ungültiges Bild/],
+    [{ name: 'Notch', data: skinPng({ extra: 300 * 1024 }) }, /256 KB/],
+    ['[]', /Ungültige Anfrage/],
+    ['{kaputt', /Ungültige Anfrage/]
+  ];
+  for (const [body, message] of cases) {
+    const res = await importSkin(url, bridge.register(`inst_400_${n++}`, ID_A), body);
+    assert.equal(res.status, 400, JSON.stringify(body).slice(0, 80));
+    assert.deepEqual(Object.keys(res.body), ['error']); assert.match(res.body.error, message);
+  }
+  assert.equal(controller.skins.length, 0);
+  assert.ok(!events.includes('skins-changed'));
+});
+
+test('skins/import: Schutz wie bei den anderen Routen (401, 403, 405, 415)', async t => {
+  const { url, token, bridge, controller } = await started(t);
+  const body = { name: 'Notch', data: skinPng() };
+  assert.equal((await importSkin(url, undefined, body)).status, 401);
+  assert.equal((await importSkin(url, 'f'.repeat(64), body)).status, 401);
+  assert.equal((await importSkin(url, token.slice(0, 63), body)).status, 401);
+  assert.equal((await importSkin(url, token, body, { headers: { Origin: 'https://evil.example' } })).status, 403);
+  assert.equal((await importSkin(url, token, body, { headers: { Origin: 'null' } })).status, 403);
+  assert.equal((await importSkin(url, token, body, { headers: { Host: `localhost:${bridge.port}` } })).status, 403);
+  const get = await request(`${url}/v1/skins/import`, { token });
+  assert.equal(get.status, 405); assert.equal(get.headers.allow, 'POST');
+  assert.equal((await importSkin(url, token, body, { headers: { 'Content-Type': 'text/plain' } })).status, 415);
+  assert.equal(controller.skins.length, 0);
+});
+
+test('skins/import: bis 512 KB erlaubt, darüber 413; die anderen Routen behalten 4 KB', async t => {
+  const { url, token, controller } = await started(t);
+  const big = await importSkin(url, token, { name: 'Groß', data: skinPng({ extra: 200 * 1024 }) });
+  assert.equal(big.status, 201, 'mehr als 4 KB sind beim Import erlaubt');
+  const tooBig = await importSkin(url, token, { name: 'Riesig', data: skinPng({ extra: 400 * 1024 }) });
+  assert.equal(tooBig.status, 413); assert.deepEqual(tooBig.body, { error: 'Anfrage zu groß.' });
+  assert.equal(controller.skins.length, 1);
+  assert.equal((await request(`${url}/v1/accounts/switch`, { method: 'POST', token, body: JSON.stringify({ id: ID_B, pad: 'x'.repeat(5000) }) })).status, 413);
+});
+
+test('skins/import: volle Bibliothek liefert 409 mit der bekannten Meldung, Duplikate weiter 200', async t => {
+  const { url, token, controller, events } = await started(t);
+  controller.skins = Array.from({ length: 100 }, (_, i) => ({ id: `skin-${i}`, name: `S${i}`, data: i === 0 ? skinPng({ seed: 9 }) : '' }));
+  const full = await importSkin(url, token, { name: 'Notch', data: skinPng({ seed: 1 }) });
+  assert.equal(full.status, 409);
+  assert.deepEqual(full.body, { error: 'Maximal 100 eigene Skins möglich. Bitte zuerst einen Skin entfernen.' });
+  const duplicate = await importSkin(url, token, { name: 'Notch', data: skinPng({ seed: 9 }) });
+  assert.equal(duplicate.status, 200);
+  assert.deepEqual(duplicate.body, { skin: { id: 'skin-0', name: 'S0', variant: 'classic' }, duplicate: true });
+  assert.equal(controller.skins.length, 100);
+  assert.ok(!events.includes('skins-changed'));
+});
+
+test('skins/import: höchstens 10 Anfragen pro Minute und Token, danach 429 mit Retry-After', async t => {
+  const { url, token, bridge, controller } = await started(t);
+  for (let i = 0; i < 10; i++) {
+    const res = await importSkin(url, token, { name: 'Notch', data: skinPng({ seed: i % 3 }) });
+    assert.ok([200, 201].includes(res.status), `Anfrage ${i + 1}: ${res.status}`);
+  }
+  // Auch mit großem Body kommt die 429 sicher an (Antwort erst nach dem Lesen).
+  const limited = await importSkin(url, token, { name: 'Notch', data: skinPng({ seed: 5, extra: 200 * 1024 }) });
+  assert.equal(limited.status, 429); assert.equal(typeof limited.body.error, 'string');
+  const retry = Number(limited.headers['retry-after']);
+  assert.ok(Number.isInteger(retry) && retry >= 1 && retry <= 60, `Retry-After ${retry}`);
+  assert.equal(controller.skins.length, 3);
+  // Eine andere Instanz (eigenes Token) ist nicht betroffen.
+  assert.equal((await importSkin(url, bridge.register('inst_other', ID_B), { name: 'Notch', data: skinPng({ seed: 5 }) })).status, 201);
+  // Nach Ablauf des Fensters geht es weiter.
+  const entry = bridge.tokens.get(token);
+  entry.imports = entry.imports.map(time => time - 60000);
+  assert.equal((await importSkin(url, token, { name: 'Notch', data: skinPng({ seed: 6 }) })).status, 201);
 });
 
 test('Nach Instanz-Ende ist das Token ungültig; ohne Instanz stoppt der Server', async t => {

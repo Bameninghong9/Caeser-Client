@@ -6,6 +6,7 @@ let renamingSkinId = null;
 let renamingSkinVariant = 'classic';
 let dialogSkinRenderer = null;
 let renamingSkinTexture = null;
+let renderGeneration = 0;
 
 function syncModelPillsUI() {
   const classicBtn = $('skin-model-classic');
@@ -266,6 +267,7 @@ async function renderSkins() {
   // Render skins library grid
   const grid = $('skins-grid');
   if (!grid) return;
+  const generation = ++renderGeneration;
   grid.replaceChildren();
 
   // 1. Classic Steve
@@ -284,6 +286,8 @@ async function renderSkins() {
   // 2. Microsoft Account skin (if account exists)
   if (account && !hiddenSkins.includes('account')) {
     const avatarData = await api.accountAvatar(account.id).catch(() => null);
+    // Inzwischen neu gezeichnet (z. B. Skin aus dem Spiel gespeichert): sonst stünden Karten doppelt im Raster.
+    if (generation !== renderGeneration) return;
     grid.append(createSkinWindowCard({
       id: 'account',
       name: skinNames.account || account.name,
@@ -432,6 +436,11 @@ async function applyCustomPet() {
 
 export function initSkins() {
   onState(renderSkins);
+  // „Skin speichern“ im Spiel (Account-Brücke): Bibliothek sofort neu laden; der aktive Skin bleibt unverändert.
+  api.on('skins-changed', info => action(async () => {
+    update(await api.state());
+    if (info?.player) toast(t('skinImported').replaceAll('{name}', () => info.player));
+  }));
 
   // Subnav tabs (Skins vs 3D-Cosmetics)
   document.querySelectorAll('.skins-nav-tab').forEach(tab => {

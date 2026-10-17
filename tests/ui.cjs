@@ -246,7 +246,23 @@ const { encodePng } = require('../src/backend/cape-image.cjs');
     await page.locator('[data-capes-tab="all"]').click();
     await page.locator('#capes-grid .cape-card').nth(1).waitFor();
     assert.equal(await page.locator('#capes-grid .cape-active-badge').count(), 0, 'neues Cape ist aktiv, nicht mehr die Galerie-Karte');
+    // „Skin speichern“ im Spiel (Account-Brücke sendet skins-changed): die offene Skin-Seite zeigt den Skin sofort, mit Hinweis
+    await page.locator('[data-page="skins"]').click();
+    await page.locator('.skin-window-card[data-skin-id="account"]').waitFor();
+    const skinCards = await page.locator('.skin-window-card').count();
+    const importedId = await page.evaluate(async () => {
+      const canvas = document.createElement('canvas'); canvas.width = 64; canvas.height = 64;
+      canvas.getContext('2d').fillRect(0, 0, 64, 64);
+      const state = await window.caeser.addSkin({ name: 'Notch', data: canvas.toDataURL('image/png') }); // nur im Hauptprozess, die Seite weiß noch nichts
+      return state.skins.at(-1).id;
+    });
+    assert.equal(await page.locator('.skin-window-card').count(), skinCards);
+    await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.getAllWindows().find(w => w.webContents.getURL().endsWith('/index.html'))
+      .webContents.send('skins-changed', { id, name: 'Notch', player: 'Notch' }), importedId);
+    await page.locator(`.skin-window-card[data-skin-id="${importedId}"]`).waitFor();
+    await page.waitForFunction(() => document.getElementById('toast').textContent === 'Skin von Notch gespeichert.');
+    assert.equal(await page.locator('.skin-window-card').count(), skinCards + 1);
     assert.deepEqual(errors,[]);
-    console.log('UI passed: profile create/edit/delete, isolated settings, MB slider, real catalogue, mode selection, restart persistence, account gate, client-ID validation, theme changes, layout, capes page.');
+    console.log('UI passed: profile create/edit/delete, isolated settings, MB slider, real catalogue, mode selection, restart persistence, account gate, client-ID validation, theme changes, layout, capes page, live skin library refresh.');
   } finally { if(app) await app.close(); }
 })().catch(error=>{console.error(error);process.exitCode=1;});

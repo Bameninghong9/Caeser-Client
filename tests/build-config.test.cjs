@@ -25,11 +25,15 @@ test('Schreibt Proxy und Schlüssel in die Build-Konfiguration, ohne den Schlüs
   assert.match(output, /Schlüssel gesetzt: ja/);
 });
 
-test('Ohne Variablen: leere Konfiguration und deutliche Warnung', async t => {
+test('Ohne Variablen: eingebauter Standard-Schlüssel, ohne ihn auszugeben', async t => {
   const { outFile, output } = await run(t, {});
   delete require.cache[outFile];
-  assert.deepEqual(require(outFile), { curseforge: { proxy: '', key: '' }, caeser: DEFAULT_API });
-  assert.match(output, /Build ohne CurseForge/);
+  const { curseforge, caeser } = require(outFile);
+  assert.equal(curseforge.proxy, '');
+  assert.ok(curseforge.key, 'Standard-Schlüssel ist gesetzt');
+  assert.deepEqual(caeser, DEFAULT_API);
+  assert.ok(!output.includes(curseforge.key), 'Schlüssel erscheint nicht auf der Konsole');
+  assert.match(output, /Schlüssel gesetzt: ja/);
 });
 
 test('Lehnt unsichere oder ungültige Werte ab', async t => {

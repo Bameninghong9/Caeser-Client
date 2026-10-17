@@ -1,16 +1,23 @@
 // Lokale Account-Brücke für den Ingame-Account-Switcher der Caeser-Mod.
 // Die Konten bleiben im Launcher (accounts.bin); die laufende Minecraft-Instanz bekommt nur für den
 // gewählten Account ein frisches Access-Token, niemals Refresh-Tokens.
+// Außerdem „Skin speichern“: POST /v1/skins/import legt Skins anderer Spieler in der Skin-Bibliothek ab.
 // Zugang nur über 127.0.0.1 und ein zufälliges Token pro Instanz (per Umgebungsvariable übergeben).
 const http = require('node:http');
 const crypto = require('node:crypto');
 const auth = require('../auth/microsoft.cjs');
 const HOST = '127.0.0.1';
 const MAX_BODY = 4096;
+// Nur für den Skin-Import: PNG bis 256 KB als Base64-Data-URL (~341 KB) plus JSON-Hülle.
+const MAX_IMPORT_BODY = 512 * 1024;
 const SWITCH_INTERVAL = 1000;
+// Höchstens IMPORT_LIMIT Import-Anfragen pro IMPORT_WINDOW und Token (gleitendes Fenster).
+const IMPORT_LIMIT = 10;
+const IMPORT_WINDOW = 60000;
 // Mod-Timeout 10 s: Token-Erneuerung plus Skin-Sync müssen darunter bleiben.
 const SKIN_SYNC_TIMEOUT = 6000;
-const ROUTES = { '/v1/accounts': 'GET', '/v1/accounts/switch': 'POST', '/v1/accounts/login': 'POST' };
+const IMPORT_ROUTE = '/v1/skins/import';
+const ROUTES = { '/v1/accounts': 'GET', '/v1/accounts/switch': 'POST', '/v1/accounts/login': 'POST', [IMPORT_ROUTE]: 'POST' };
 
 // Ersetzt alle bekannten Geheimnisse; leere Werte würden sonst jede Stelle des Texts treffen.
 function redactSecrets(text, secrets) {
@@ -36,7 +43,7 @@ function skinSyncBody({ status, skinId, error }) {
 class AccountBridge {
   constructor(controller, { log = console, skinSyncTimeout = SKIN_SYNC_TIMEOUT } = {}) {
     this.controller = controller; this.log = log; this.skinSyncTimeout = skinSyncTimeout;
-    this.tokens = new Map(); // token -> { instanceId, accountId, lastSwitch }
+    this.tokens = new Map(); // token -> { instanceId, accountId, lastSwitch, imports (Zeitpunkte der letzten Skin-Importe) }
     this.server = null; this.port = 0; this.listening = null; this.closing = null;
     this.loginRunning = false; this.loginError = null; this.lastAddedId = null;
   }
@@ -49,7 +56,7 @@ class AccountBridge {
   // Pro Instanz ein Token; die Instanz spielt anfangs mit dem Start-Account.
   register(instanceId, accountId) {
     const token = crypto.randomBytes(32).toString('hex');
-    this.tokens.set(token, { instanceId, accountId, lastSwitch: 0 });
+    this.tokens.set(token, { instanceId, accountId, lastSwitch: 0, imports: [] });
     return token;
   }
   // Instanz beendet: Token sofort ungültig; ohne laufende Instanz wird der Server gestoppt.
@@ -106,11 +113,12 @@ class AccountBridge {
     }
     return found;
   }
-  readBody(req) {
+  // Zu große Anfragen werden bis zum Ende gelesen und verworfen (null): antwortet der Server früher und schließt,
+  // setzt die Verbindung zurück, während der Client noch sendet, und die 413 geht verloren.
+  readBody(req, limit = MAX_BODY) {
     return new Promise((resolve, reject) => {
-      if (Number(req.headers['content-length']) > MAX_BODY) { req.resume(); resolve(null); return; }
-      const chunks = []; let size = 0, tooLarge = false;
-      req.on('data', chunk => { if (tooLarge) return; size += chunk.length; if (size > MAX_BODY) { tooLarge = true; chunks.length = 0; } else chunks.push(chunk); });
+      const chunks = []; let size = 0, tooLarge = Number(req.headers['content-length']) > limit;
+      req.on('data', chunk => { if (tooLarge) return; size += chunk.length; if (size > limit) { tooLarge = true; chunks.length = 0; } else chunks.push(chunk); });
       req.on('end', () => resolve(tooLarge ? null : Buffer.concat(chunks).toString('utf8')));
       req.on('error', reject);
     });
@@ -125,13 +133,44 @@ class AccountBridge {
     if (req.method !== ROUTES[pathname]) { req.resume(); res.setHeader('Allow', ROUTES[pathname]); return this.send(res, 405, { error: 'Methode nicht erlaubt.' }); }
     if (req.method === 'GET') { req.resume(); return this.send(res, 200, this.list(entry)); }
     if (!/^application\/json\s*(;|$)/i.test(req.headers['content-type'] || '')) { req.resume(); return this.send(res, 415, { error: 'Ungültiges Anfrageformat.' }); }
-    const raw = await this.readBody(req);
+    const importing = pathname === IMPORT_ROUTE;
+    const raw = await this.readBody(req, importing ? MAX_IMPORT_BODY : MAX_BODY);
+    // Skin-Importe drosseln; jede Import-Anfrage zählt. Erst nach dem Lesen antworten (siehe readBody).
+    if (importing) {
+      const retryAfter = this.reserveImport(entry);
+      if (retryAfter) {
+        res.setHeader('Retry-After', String(retryAfter));
+        return this.send(res, 429, { error: 'Bitte warte einen Moment, bevor du weitere Skins speicherst.' });
+      }
+    }
     if (raw === null) return this.send(res, 413, { error: 'Anfrage zu groß.' });
     let body;
     try { body = raw.trim() ? JSON.parse(raw) : {}; } catch { body = null; }
     if (!body || typeof body !== 'object' || Array.isArray(body)) return this.send(res, 400, { error: 'Ungültige Anfrage.' });
     if (pathname === '/v1/accounts/switch') return this.switch(res, entry, body);
+    if (importing) return this.importSkin(res, body);
     return this.login(res);
+  }
+  // Gleitendes Fenster pro Token. Liefert 0, wenn der Import zählt, sonst die Wartezeit in Sekunden (Retry-After).
+  reserveImport(entry, now = Date.now()) {
+    entry.imports = entry.imports.filter(time => now - time < IMPORT_WINDOW);
+    if (entry.imports.length < IMPORT_LIMIT) { entry.imports.push(now); return 0; }
+    return Math.max(1, Math.ceil((entry.imports[0] + IMPORT_WINDOW - now) / 1000));
+  }
+  // „Skin speichern“ in der Mod: Skin eines anderen Spielers in die Launcher-Bibliothek übernehmen.
+  // Nicht aktiv setzen, nichts zu Mojang hochladen; die Launcher-UI lädt die Bibliothek nach skins-changed neu.
+  async importSkin(res, body) {
+    let result;
+    try { result = await this.controller.importSkin({ name: body.name, data: body.data, variant: body.variant }); }
+    catch (error) {
+      if (error?.code === 'INVALID_SKIN') return this.send(res, 400, { error: error.message });
+      if (error?.code === 'SKIN_LIMIT') return this.send(res, 409, { error: error.message });
+      this.warn('Skin konnte nicht gespeichert werden', error);
+      return this.send(res, 500, { error: 'Der Skin konnte nicht gespeichert werden.' });
+    }
+    const { skin, duplicate } = result;
+    if (!duplicate) this.controller.emit('skins-changed', { id: skin.id, name: skin.name, player: body.name.trim() });
+    return this.send(res, duplicate ? 200 : 201, { skin, duplicate });
   }
   // Niemals Tokens: nur ID, Name und ob diese Instanz gerade damit spielt.
   list(entry) {

@@ -16,7 +16,7 @@ const { AccountBridge, redactSecrets } = require('./account-bridge.cjs');
 const { LogStore } = require('../game/log-store.cjs');
 const { curseforgeAccess } = require('../mods/curseforge-config.cjs');
 const { redactLog, buildShareText, uploadToMclogs, localUsernames, MCLOGS_URL_PREFIX } = require('../shared/log-share.cjs');
-const { validateSkinDataUrl, validateSkinName, MAX_SKINS } = require('../shared/skins.cjs');
+const { validateSkinDataUrl, validateSkinName, validatePlayerName, validateSkinVariant, skinBytes, uniqueSkinName, MAX_SKINS } = require('../shared/skins.cjs');
 const { CaeserApi } = require('../backend/caeser-api.cjs');
 const themes = ['Cyberpunk','Ultraviolet','Toxic','Inferno','Glacier','Bloodmoon','Aurora','Bubblegum','Limelight','Sunset','Electric','Nebula','Goldrush','Emerald','Plasma','Crimson'];
 const DEFAULT_COSMETICS = {
@@ -87,22 +87,39 @@ class Controller {
     cosmetics: this.settings.cosmetics || DEFAULT_COSMETICS,
     wallpaper: this.wallpaper ? { name: this.wallpaper.name, type: this.wallpaper.type, opacity: this.settings.customWallpaper?.opacity ?? 40, blur: this.settings.customWallpaper?.blur ?? 0 } : null }; }
   async getSkins() { return this.skins; }
-  async addSkin({ name, data, variant } = {}) {
+  // Aus der UI hinzugefügt: der neue Skin wird sofort der aktive Skin.
+  async addSkin(input) {
+    const skin = await this.storeSkin(input);
+    this.settings.activeSkinId = skin.id;
+    await this.saveSettings();
+    return this.state();
+  }
+  // Prüft Bild, Namen und Anzahl und legt den Skin in der Bibliothek ab; der aktive Skin bleibt unverändert.
+  async storeSkin({ name, data, variant } = {}) {
     validateSkinDataUrl(data);
-    if (this.skins.length >= MAX_SKINS) throw new Error(`Maximal ${MAX_SKINS} eigene Skins möglich. Bitte zuerst einen Skin entfernen.`);
-    const detected = this.detectSkinVariant(data);
+    if (this.skins.length >= MAX_SKINS) throw Object.assign(new Error(`Maximal ${MAX_SKINS} eigene Skins möglich. Bitte zuerst einen Skin entfernen.`), { code: 'SKIN_LIMIT' });
     const skin = {
       id: 'skin-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
       name: validateSkinName(name, 'Custom Skin'),
       data,
-      variant: (variant === 'slim' || variant === 'classic') ? variant : detected,
+      variant: (variant === 'slim' || variant === 'classic') ? variant : this.detectSkinVariant(data),
       createdAt: Date.now()
     };
     this.skins = [...this.skins, skin];
     await this.store.write('skins.json', this.skins);
-    this.settings.activeSkinId = skin.id;
-    await this.saveSettings();
-    return this.state();
+    return skin;
+  }
+  // „Skin speichern“ in der Mod (Account-Brücke): Skin eines anderen Spielers in die Bibliothek übernehmen, ohne ihn
+  // zu aktivieren oder zu Mojang hochzuladen. Gleiche Bilddaten werden nicht doppelt gespeichert (duplicate: true);
+  // ist der Spielername schon vergeben, heißt der neue Skin „Name (2)“, „Name (3)“ …
+  async importSkin({ name, data, variant } = {}) {
+    const player = validatePlayerName(name);
+    const chosen = validateSkinVariant(variant);
+    const image = validateSkinDataUrl(data);
+    const existing = this.skins.find(s => skinBytes(s.data)?.equals(image));
+    if (existing) return { skin: { id: existing.id, name: existing.name, variant: existing.variant || this.detectSkinVariant(existing.data) }, duplicate: true };
+    const skin = await this.storeSkin({ name: uniqueSkinName(player, this.skins.map(s => s.name)), data, variant: chosen });
+    return { skin: { id: skin.id, name: skin.name, variant: skin.variant }, duplicate: false };
   }
   async removeSkin(id) {
     if (id === 'steve' || id === 'account') {
