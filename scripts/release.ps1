@@ -1,21 +1,36 @@
 # Baut den Launcher und lädt ihn als Release nach Bameninghong9/Caeser-Client-Releases hoch.
-# Fragt den GitHub-Token verdeckt ab; er wird nirgends gespeichert und nur für diesen Lauf gesetzt.
+# Der GitHub-Token wird beim ersten Mal verdeckt abgefragt und verschlüsselt (Windows DPAPI, nur für diesen
+# Windows-Benutzer lesbar) unter %APPDATA%\caeser-release\token gespeichert; danach fragt das Skript nicht mehr.
+#   -SaveToken   nur den Token abfragen und speichern, nichts bauen
+#   -ResetToken  gespeicherten Token verwerfen und neu abfragen (z. B. nach Ablauf)
+param([switch]$SaveToken, [switch]$ResetToken)
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
+$tokenFile = Join-Path $env:APPDATA 'caeser-release\token'
+if ($ResetToken -and (Test-Path $tokenFile)) { Remove-Item $tokenFile }
+if (Test-Path $tokenFile) { $secure = Get-Content $tokenFile -Raw | ConvertTo-SecureString }
+else {
+  $secure = Read-Host 'GitHub-Token einfuegen (Rechtsklick) und Enter druecken' -AsSecureString
+  if ($secure.Length -eq 0) { throw 'Kein Token eingegeben.' }
+  New-Item -ItemType Directory -Force (Split-Path $tokenFile) | Out-Null
+  $secure | ConvertFrom-SecureString | Set-Content $tokenFile
+  Write-Host 'Token verschluesselt gespeichert.' -ForegroundColor Green
+}
+if ($SaveToken) { return }
+
 $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
 Write-Host ''
 Write-Host "Caeser Client $version wird veroeffentlicht." -ForegroundColor Cyan
-$secure = Read-Host 'GitHub-Token einfuegen (Rechtsklick) und Enter druecken' -AsSecureString
 $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
 try {
   $env:GH_TOKEN = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
-  if (-not $env:GH_TOKEN) { throw 'Kein Token eingegeben.' }
   # GitHub verlangt für veröffentlichte Releases einen vorhandenen Tag: v<Version> auf main anlegen, falls er fehlt.
   $repo = 'https://api.github.com/repos/Bameninghong9/Caeser-Client-Releases'
   $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json'; 'User-Agent' = 'caeser-release' }
   $tag = "v$version"
   try { Invoke-RestMethod "$repo/git/ref/tags/$tag" -Headers $headers | Out-Null; Write-Host "Tag $tag existiert schon." }
   catch {
+    if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 401) { throw 'Token ungueltig oder abgelaufen. Neu starten mit -ResetToken.' }
     $sha = (Invoke-RestMethod "$repo/git/ref/heads/main" -Headers $headers).object.sha
     $body = @{ ref = "refs/tags/$tag"; sha = $sha } | ConvertTo-Json
     Invoke-RestMethod "$repo/git/refs" -Method Post -Headers $headers -Body $body -ContentType 'application/json' | Out-Null
