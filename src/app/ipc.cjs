@@ -6,7 +6,7 @@ const { instanceKey } = require('../data/profiles.cjs');
 const { inside } = require('../shared/net.cjs');
 const { avatar } = require('../auth/avatar.cjs');
 const { createCapesHandlers } = require('./capes-ipc.cjs');
-function register(controller, win, pageURL, logManager) {
+function register(controller, win, pageURL, logManager, updater) {
   const handle = (name, fn) => ipcMain.handle(name, async (event, value) => {
     if (event.senderFrame !== win.webContents.mainFrame || event.senderFrame.url !== pageURL) throw new Error('Zugriff verweigert.');
     try { return { ok: true, data: await fn(value) }; }
@@ -108,6 +108,10 @@ function register(controller, win, pageURL, logManager) {
     if (target === 'folder') { await fs.mkdir(controller.root, { recursive: true }); const error = await shell.openPath(controller.root); if (error) throw new Error(error); }
     else if (links[target]) await shell.openExternal(links[target]); else throw new Error('Unbekanntes Ziel.');
   });
+  // Launcher-Update: nur auf Klick herunterladen und installieren (siehe updater.cjs)
+  handle('update-status', () => updater ? updater.status() : { status: 'idle' });
+  handle('update-download', () => updater.download());
+  handle('update-install', () => updater.install());
   handle('window', action => {
     if (action === 'minimize') win.minimize(); if (action === 'maximize') win.isMaximized() ? win.unmaximize() : win.maximize(); if (action === 'close') win.close();
   });

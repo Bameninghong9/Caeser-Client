@@ -278,6 +278,16 @@ export const translations = {
     areYouSure: 'Bist du sicher?',
     confirm: 'Bestätigen',
 
+    // Launcher-Update (Titelleiste)
+    updateAvailable: 'Update auf {version}',
+    updateAvailableTitle: 'Neue Version {version} herunterladen und installieren',
+    updatePortableTitle: 'Neue Version {version} auf der Download-Seite öffnen',
+    updateDownloading: 'Lädt … {percent} %',
+    updateReady: 'Neu starten & aktualisieren',
+    updateReadyTitle: 'Version {version} installieren und den Launcher neu starten',
+    updateAfterGame: 'Update nach dem Spiel',
+    updateCloseGame: 'Bitte beende zuerst Minecraft, dann kann das Update installiert werden.',
+
     // Capes Page
     navCapes: 'Capes',
     capesTitle: 'Deine Capes.',
@@ -631,6 +641,16 @@ export const translations = {
     confirmation: 'CONFIRMATION',
     areYouSure: 'Are you sure?',
     confirm: 'Confirm',
+
+    // Launcher update (title bar)
+    updateAvailable: 'Update to {version}',
+    updateAvailableTitle: 'Download and install version {version}',
+    updatePortableTitle: 'Open the download page for version {version}',
+    updateDownloading: 'Downloading … {percent} %',
+    updateReady: 'Restart & update',
+    updateReadyTitle: 'Install version {version} and restart the launcher',
+    updateAfterGame: 'Update after playing',
+    updateCloseGame: 'Please close Minecraft first, then the update can be installed.',
 
     // Capes Page
     navCapes: 'Capes',

@@ -262,7 +262,20 @@ const { encodePng } = require('../src/backend/cape-image.cjs');
     await page.locator(`.skin-window-card[data-skin-id="${importedId}"]`).waitFor();
     await page.waitForFunction(() => document.getElementById('toast').textContent === 'Skin von Notch gespeichert.');
     assert.equal(await page.locator('.skin-window-card').count(), skinCards + 1);
+    // Update-Button: ohne Update verborgen, erscheint erst bei update-status (vom Hauptprozess)
+    assert.equal(await page.locator('#update-button').isHidden(), true);
+    const sendUpdate = data => app.evaluate(({ BrowserWindow }, data) => BrowserWindow.getAllWindows().find(w => w.webContents.getURL().endsWith('/index.html'))
+      .webContents.send('update-status', data), data);
+    await sendUpdate({ status: 'available', version: '9.9.9', percent: 0, portable: false });
+    await page.waitForFunction(() => document.getElementById('update-button').textContent === 'Update auf 9.9.9');
+    await sendUpdate({ status: 'downloading', version: '9.9.9', percent: 42, portable: false });
+    await page.waitForFunction(() => document.getElementById('update-button').textContent === 'Lädt … 42 %');
+    assert.equal(await page.locator('#update-button').isDisabled(), true);
+    await sendUpdate({ status: 'ready', version: '9.9.9', percent: 100, portable: false });
+    await page.waitForFunction(() => document.getElementById('update-button').textContent === 'Neu starten & aktualisieren');
+    await sendUpdate({ status: 'idle' });
+    await page.locator('#update-button').waitFor({ state: 'hidden' });
     assert.deepEqual(errors,[]);
-    console.log('UI passed: profile create/edit/delete, isolated settings, MB slider, real catalogue, mode selection, restart persistence, account gate, client-ID validation, theme changes, layout, capes page, live skin library refresh.');
+    console.log('UI passed: profile create/edit/delete, isolated settings, MB slider, real catalogue, mode selection, restart persistence, account gate, client-ID validation, theme changes, layout, capes page, live skin library refresh, update button.');
   } finally { if(app) await app.close(); }
 })().catch(error=>{console.error(error);process.exitCode=1;});

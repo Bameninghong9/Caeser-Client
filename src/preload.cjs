@@ -56,8 +56,9 @@ contextBridge.exposeInMainWorld('caeser', {
   login: () => invoke('login'), cancelLogin: () => invoke('cancel-login'),
   removeAccount: id => invoke('remove-account', id), open: target => invoke('open', target),
   launch: () => invoke('launch'), window: action => invoke('window', action),
+  updateStatus: () => invoke('update-status'), downloadUpdate: () => invoke('update-download'), installUpdate: () => invoke('update-install'),
   on: (channel, callback) => {
-    if (!['auth-finished','accounts-changed','skins-changed','progress','game-log','game-exit','game-spawn','notice','mod-progress'].includes(channel)) return;
+    if (!['auth-finished','accounts-changed','skins-changed','update-status','progress','game-log','game-exit','game-spawn','notice','mod-progress'].includes(channel)) return;
     const listener = (_, data) => callback(data);
     ipcRenderer.on(channel, listener);
     return () => ipcRenderer.removeListener(channel, listener);

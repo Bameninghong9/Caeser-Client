@@ -1,6 +1,6 @@
 {
   "name": "caeser-client",
-  "version": "0.3.30",
+  "version": "0.3.31",
   "description": "Caeser Client – Minecraft Java Launcher für Windows",
   "main": "src/main.cjs",
   "scripts": {
@@ -9,13 +9,16 @@
     "test": "node --test tests/*.test.cjs",
     "test:ui": "node tests/ui.cjs",
     "prebuild": "node scripts/write-build-config.cjs",
-    "build": "electron-builder --win nsis portable --x64"
+    "build": "electron-builder --win nsis portable --x64 --publish never",
+    "prerelease": "node scripts/write-build-config.cjs",
+    "release": "electron-builder --win nsis portable --x64 --publish always"
   },
   "keywords": [],
   "author": "Caeser Client",
   "license": "GPL-3.0-only",
   "type": "commonjs",
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "yauzl": "^3.4.0"
   },
   "devDependencies": {
@@ -27,6 +30,14 @@
   "build": {
     "appId": "de.caeser.client",
     "productName": "Caeser Client",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Bameninghong9",
+        "repo": "Caeser-Client-Releases",
+        "releaseType": "release"
+      }
+    ],
     "directories": {
       "output": "dist"
     },

@@ -128,6 +128,11 @@ body{background:#0d0b13!important}
 main{background:transparent!important;position:relative;z-index:2}
 aside{background:rgba(16,16,21,0.94)!important;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);position:relative;z-index:20}
 .titlebar{background:rgba(12,12,16,0.96)!important;backdrop-filter:blur(10px);position:relative;z-index:30}
+.titlebar .update-button{width:auto;align-self:center;height:22px;margin-right:10px;padding:0 12px;border-radius:11px;background:var(--accent);color:#fff;font:600 11px Caeser,'Segoe UI',sans-serif;letter-spacing:.3px;white-space:nowrap;box-shadow:0 0 12px color-mix(in srgb,var(--accent) 55%,transparent)}
+.titlebar .update-button[hidden]{display:none}
+.titlebar .update-button:hover{background:var(--accent);filter:brightness(1.15)}
+.titlebar .update-button:disabled{cursor:default;filter:none;opacity:.75}
+.titlebar .update-button.waiting{background:#ffffff14;color:#cfcbd8;box-shadow:none}
 
 /* Glow intensity styles */
 body.glow-off *{box-shadow:none!important;text-shadow:none!important}

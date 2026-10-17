@@ -7,6 +7,7 @@ const { createLogWindowManager } = require('./log-window.cjs');
 const { register } = require('./ipc.cjs');
 const { openLoginWindow } = require('../auth/window.cjs');
 const { WALLPAPER_SCHEME } = require('./wallpaper.cjs');
+const { createUpdater } = require('./updater.cjs');
 app.setName('Caeser Client');
 // Eigenes, eng begrenztes Schema nur für die aktuelle Hintergrunddatei (stream: true für Videos).
 protocol.registerSchemesAsPrivileged([{ scheme: WALLPAPER_SCHEME, privileges: { standard: true, secure: true, stream: true } }]);
@@ -42,7 +43,13 @@ else {
     protocol.handle(WALLPAPER_SCHEME, request => controller.serveWallpaper(request));
     logManager = createLogWindowManager(controller);
     win = createWindow(controller, logManager);
-    const page = path.join(__dirname, '../../ui/index.html'); register(controller, win, pathToFileURL(page).href, logManager); await win.loadFile(page);
+    // Nur die installierte Version prüft auf Updates (nicht `npm start`); die portable .exe verlinkt die Download-Seite.
+    const updater = createUpdater({ autoUpdater: app.isPackaged ? require('electron-updater').autoUpdater : null, enabled: app.isPackaged,
+      portable: !!process.env.PORTABLE_EXECUTABLE_FILE, controller, openExternal: url => shell.openExternal(url),
+      emit: (name, data) => { if (win && !win.isDestroyed()) win.webContents.send(name, data); } });
+    app.once('will-quit', () => updater.stop());
+    const page = path.join(__dirname, '../../ui/index.html'); register(controller, win, pathToFileURL(page).href, logManager, updater); await win.loadFile(page);
+    updater.start();
   }).catch(error => { dialog.showErrorBox('Caeser Client', error.message); app.quit(); });
 }
 app.on('window-all-closed', () => app.quit());

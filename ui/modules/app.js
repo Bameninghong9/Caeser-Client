@@ -10,6 +10,7 @@ import { applyLanguage } from './i18n.js';
 import { initAtmosphereAnimation } from './atmosphere-animation.js';
 import { initGallery } from './gallery.js';
 import { initCapes } from './capes.js';
+import { initUpdater } from './updater.js';
 renderIcons(); initProfiles(); initAccounts(); initSettings(); initPlay(); initDetails(); initSkins(); initAtmosphereAnimation(); initGallery(); initCapes();
 window.__update = update;
 window.refreshState = async () => update(await api.state());
@@ -20,6 +21,7 @@ api.on('notice', message => toast(message, true));
 action(async () => {
   const state = await api.state(); model.running = state.running; model.busy = state.busy; update(state);
   applyLanguage(state.settings.language || 'de');
+  initUpdater(state);
   $('build-version').textContent = state.appVersion;
   if ($('about-version')) $('about-version').textContent = state.appVersion;
   await loadVersions();
