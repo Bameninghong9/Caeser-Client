@@ -1,5 +1,5 @@
-// Update-Button in der Titelleiste: erscheint nur, wenn es eine neue Launcher-Version gibt.
-// Nichts passiert ohne Klick (siehe src/app/updater.cjs).
+// Update-Button oben rechts im Header: steht an der Stelle von „Alles aktuell“ und erscheint nur, wenn es eine neue
+// Launcher-Version gibt (der Status wird dann ausgeblendet). Nichts passiert ohne Klick (siehe src/app/updater.cjs).
 import { $, api, action, toast } from './common.js';
 import { t } from './i18n.js';
 
@@ -10,23 +10,27 @@ const fill = (key, values) => Object.entries(values).reduce((text, [name, value]
 
 function render() {
   const button = $('update-button');
+  const label = $('update-label');
   const { status: current, version, percent, portable } = status;
   button.hidden = !['available', 'downloading', 'ready', 'installing'].includes(current);
+  $('connection-status').hidden = !button.hidden;
   if (button.hidden) return;
   const waiting = (current === 'ready' || current === 'available') && inGame && !portable;
   button.disabled = current === 'downloading' || current === 'installing';
   button.classList.toggle('waiting', waiting);
+  button.classList.toggle('downloading', current === 'downloading');
+  button.style.setProperty('--progress', `${current === 'downloading' ? percent || 0 : 100}%`);
   if (current === 'installing') {
-    button.textContent = t('updateInstalling');
+    label.textContent = t('updateInstalling');
     button.title = '';
   } else if (current === 'available') {
-    button.textContent = fill('updateAvailable', { version });
+    label.textContent = fill('updateAvailable', { version });
     button.title = waiting ? t('updateCloseGame') : fill(portable ? 'updatePortableTitle' : 'updateAvailableTitle', { version });
   } else if (current === 'downloading') {
-    button.textContent = fill('updateDownloading', { percent: percent || 0 });
+    label.textContent = fill('updateDownloading', { percent: percent || 0 });
     button.title = '';
   } else {
-    button.textContent = t(waiting ? 'updateAfterGame' : 'updateReady');
+    label.textContent = t(waiting ? 'updateAfterGame' : 'updateReady');
     button.title = waiting ? t('updateCloseGame') : fill('updateReadyTitle', { version });
   }
 }

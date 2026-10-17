@@ -128,11 +128,15 @@ body{background:#0d0b13!important}
 main{background:transparent!important;position:relative;z-index:2}
 aside{background:rgba(16,16,21,0.94)!important;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);position:relative;z-index:20}
 .titlebar{background:rgba(12,12,16,0.96)!important;backdrop-filter:blur(10px);position:relative;z-index:30}
-.titlebar .update-button{width:auto;align-self:center;height:22px;margin-right:10px;padding:0 12px;border-radius:11px;background:var(--accent);color:#fff;font:600 11px Caeser,'Segoe UI',sans-serif;letter-spacing:.3px;white-space:nowrap;box-shadow:0 0 12px color-mix(in srgb,var(--accent) 55%,transparent)}
-.titlebar .update-button[hidden]{display:none}
-.titlebar .update-button:hover{background:var(--accent);filter:brightness(1.15)}
-.titlebar .update-button:disabled{cursor:default;filter:none;opacity:.75}
-.titlebar .update-button.waiting{background:#ffffff14;color:#cfcbd8;box-shadow:none}
+.update-button{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 15px 0 12px;border-radius:16px;border:1px solid color-mix(in srgb,var(--accent) 70%,#ffffff30);background:linear-gradient(90deg,var(--accent) var(--progress,100%),color-mix(in srgb,var(--accent) 28%,#211928) var(--progress,100%));color:#fff;font-size:11px;font-weight:650;letter-spacing:.3px;white-space:nowrap;animation:update-glow 2.4s ease-in-out infinite;transition:transform .18s ease,filter .18s ease}
+.update-button svg{width:14px;height:14px;stroke-width:2.2;flex-shrink:0}
+.update-button:hover{filter:brightness(1.12);transform:translateY(-1px)}
+.update-button:disabled{opacity:1;cursor:default;filter:none;transform:none}
+.update-button.downloading{animation:none}
+.update-button.downloading svg{animation:update-bounce 1s ease-in-out infinite}
+.update-button.waiting{background:#ffffff10;border-color:#ffffff1c;color:#cfcbd8;animation:none}
+@keyframes update-glow{0%,100%{box-shadow:0 0 8px color-mix(in srgb,var(--accent) 30%,transparent)}50%{box-shadow:0 0 20px color-mix(in srgb,var(--accent) 60%,transparent)}}
+@keyframes update-bounce{0%,100%{transform:translateY(-1px)}50%{transform:translateY(2px)}}
 
 /* Glow intensity styles */
 body.glow-off *{box-shadow:none!important;text-shadow:none!important}

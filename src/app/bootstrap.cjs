@@ -27,6 +27,7 @@ async function confirmShare(parent, language) {
 }
 let win;
 let logManager;
+let updater = null;
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
@@ -37,6 +38,7 @@ else {
       writeClipboard: text => clipboard.writeText(text), openExternal: url => shell.openExternal(url), emit: (name, data) => {
         if (win && !win.isDestroyed()) win.webContents.send(name, data);
         if (logManager) logManager.handleEmit(name, data);
+        if (name === 'game-exit' && updater) updater.onGameExit(data); // Minecraft zu: sofort auf Updates prüfen
       } });
     await controller.load();
     app.once('will-quit', () => { controller.bridge.stop().catch(() => {}); }); // Account-Brücke beim Beenden schließen
@@ -44,7 +46,7 @@ else {
     logManager = createLogWindowManager(controller);
     win = createWindow(controller, logManager);
     // Nur die installierte Version prüft auf Updates (nicht `npm start`); die portable .exe verlinkt die Download-Seite.
-    const updater = createUpdater({ autoUpdater: app.isPackaged ? require('electron-updater').autoUpdater : null, enabled: app.isPackaged,
+    updater = createUpdater({ autoUpdater: app.isPackaged ? require('electron-updater').autoUpdater : null, enabled: app.isPackaged,
       portable: !!process.env.PORTABLE_EXECUTABLE_FILE, controller, openExternal: url => shell.openExternal(url),
       emit: (name, data) => { if (win && !win.isDestroyed()) win.webContents.send(name, data); } });
     app.once('will-quit', () => updater.stop());

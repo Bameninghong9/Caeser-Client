@@ -1,13 +1,14 @@
 // Launcher-Updates nur auf Wunsch: im Hintergrund wird lediglich geprüft, ob es eine neue Version gibt.
-// Ein Klick auf den Update-Button in der Titelleiste lädt das Update, schließt den Launcher und startet die neue Version.
+// Ein Klick auf den Update-Button oben rechts (an der Stelle von „Alles aktuell“) lädt das Update, schließt den
+// Launcher und startet die neue Version.
+// Geprüft wird sofort beim Start, sobald die letzte Minecraft-Instanz beendet ist, und danach alle 30 Minuten.
 // Die Releases liegen in einem eigenen, öffentlichen Repo, damit das Code-Repo privat sein darf.
 const RELEASES_URL = 'https://github.com/Bameninghong9/Caeser-Client-Releases/releases/latest';
-const FIRST_CHECK_DELAY = 5000;
-const CHECK_INTERVAL = 6 * 60 * 60 * 1000;
+const CHECK_INTERVAL = 30 * 60 * 1000;
 
 // status: 'idle' (nichts zu tun) | 'available' | 'downloading' | 'ready' (geladen, wartet auf Spielende) | 'installing'
 function createUpdater({ autoUpdater, enabled, portable = false, controller, emit = () => {}, openExternal, log = console,
-  firstCheckDelay = FIRST_CHECK_DELAY, checkInterval = CHECK_INTERVAL } = {}) {
+  checkInterval = CHECK_INTERVAL } = {}) {
   let state = { status: 'idle', version: null, percent: 0, portable };
   let timers = [];
   const set = patch => { state = { ...state, ...patch }; emit('update-status', state); };
@@ -31,12 +32,20 @@ function createUpdater({ autoUpdater, enabled, portable = false, controller, emi
     catch (error) { log.warn?.(`Update-Prüfung fehlgeschlagen: ${error?.message || error}`); }
     return state;
   }
+  // Erste Prüfung sofort (die Seite ist dann schon geladen), danach regelmäßig.
   function start() {
     if (!enabled) return;
-    timers.push(setTimeout(check, firstCheckDelay), setInterval(check, checkInterval));
-    timers.forEach(timer => timer.unref?.());
+    check();
+    const timer = setInterval(check, checkInterval);
+    timer.unref?.();
+    timers.push(timer);
   }
-  function stop() { timers.forEach(timer => { clearTimeout(timer); clearInterval(timer); }); timers = []; }
+  function stop() { timers.forEach(timer => clearInterval(timer)); timers = []; }
+  // Minecraft beendet: läuft keine Instanz mehr, sofort prüfen, damit der Button gleich erscheint.
+  function onGameExit(data) {
+    if (data?.runningCount > 0) return Promise.resolve(state);
+    return check();
+  }
 
   async function download() {
     if (state.status !== 'available') throw new Error('Es ist kein Update verfügbar.');
@@ -64,6 +73,6 @@ function createUpdater({ autoUpdater, enabled, portable = false, controller, emi
     autoUpdater.quitAndInstall(true, true);
     return state;
   }
-  return { status: () => state, check, start, stop, download, install };
+  return { status: () => state, check, start, stop, onGameExit, download, install };
 }
 module.exports = { createUpdater, RELEASES_URL };

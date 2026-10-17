@@ -262,12 +262,16 @@ const { encodePng } = require('../src/backend/cape-image.cjs');
     await page.locator(`.skin-window-card[data-skin-id="${importedId}"]`).waitFor();
     await page.waitForFunction(() => document.getElementById('toast').textContent === 'Skin von Notch gespeichert.');
     assert.equal(await page.locator('.skin-window-card').count(), skinCards + 1);
-    // Update-Button: ohne Update verborgen, erscheint erst bei update-status (vom Hauptprozess)
+    // Update-Button: ohne Update verborgen, erscheint erst bei update-status (vom Hauptprozess) an der Stelle von „Alles aktuell“
     assert.equal(await page.locator('#update-button').isHidden(), true);
+    assert.equal(await page.locator('.header-right #update-button').count(), 1, 'Button sitzt im Header, nicht in der Titelleiste');
+    assert.equal(await page.locator('.titlebar #update-button').count(), 0);
+    assert.equal(await page.locator('#connection-status').isVisible(), true);
     const sendUpdate = data => app.evaluate(({ BrowserWindow }, data) => BrowserWindow.getAllWindows().find(w => w.webContents.getURL().endsWith('/index.html'))
       .webContents.send('update-status', data), data);
     await sendUpdate({ status: 'available', version: '9.9.9', percent: 0, portable: false });
     await page.waitForFunction(() => document.getElementById('update-button').textContent === 'Update auf 9.9.9');
+    assert.equal(await page.locator('#connection-status').isHidden(), true, 'Status weicht dem Update-Button');
     await sendUpdate({ status: 'downloading', version: '9.9.9', percent: 42, portable: false });
     await page.waitForFunction(() => document.getElementById('update-button').textContent === 'Lädt … 42 %');
     assert.equal(await page.locator('#update-button').isDisabled(), true);
@@ -278,6 +282,7 @@ const { encodePng } = require('../src/backend/cape-image.cjs');
     assert.equal(await page.locator('#update-button').isDisabled(), true);
     await sendUpdate({ status: 'idle' });
     await page.locator('#update-button').waitFor({ state: 'hidden' });
+    assert.equal(await page.locator('#connection-status').isVisible(), true, 'ohne Update wieder „Alles aktuell“');
     assert.deepEqual(errors,[]);
     console.log('UI passed: profile create/edit/delete, isolated settings, MB slider, real catalogue, mode selection, restart persistence, account gate, client-ID validation, theme changes, layout, capes page, live skin library refresh, update button.');
   } finally { if(app) await app.close(); }

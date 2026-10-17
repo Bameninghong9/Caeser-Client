@@ -86,6 +86,31 @@ test('Portable: Klick öffnet nur die Download-Seite', async () => {
   assert.equal(updater.status().status, 'available');
 });
 
+test('Beim Start wird sofort geprüft, nicht erst nach einer Wartezeit', () => {
+  const { calls, updater } = setup();
+  updater.start();
+  assert.equal(calls.check, 1);
+  updater.stop();
+});
+
+test('Minecraft beendet: Prüfung erst, wenn keine Instanz mehr läuft', async () => {
+  const { calls, updater } = setup();
+  await updater.onGameExit({ runningCount: 1 });
+  assert.equal(calls.check, 0);
+  await updater.onGameExit({ runningCount: 0 });
+  assert.equal(calls.check, 1);
+  await updater.onGameExit({});
+  assert.equal(calls.check, 2);
+});
+
+test('Minecraft beendet, Update schon bekannt: keine erneute Prüfung', async () => {
+  const { auto, calls, updater } = setup();
+  auto.emit('update-available', { version: '0.3.31' });
+  await updater.onGameExit({ runningCount: 0 });
+  assert.equal(calls.check, 0);
+  assert.equal(updater.status().status, 'available');
+});
+
 test('Nicht installiert (npm start): keine Prüfung, Button bleibt verborgen', async () => {
   const { calls, updater } = setup({ enabled: false });
   updater.start();
