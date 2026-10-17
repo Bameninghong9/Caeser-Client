@@ -1,11 +1,11 @@
-# Caeser Client 0.3.33
+# Caeser Client 0.3.34
 
 Windows-11-Launcher für Minecraft **Java Edition** im Look der Caeser-Mod. Kein offizielles Mojang- oder Microsoft-Produkt.
 
 ## Starten
 
-- Installation: `dist/Caeser Client Setup 0.3.33.exe`
-- Ohne Installation: `dist/Caeser-Client-Portable-0.3.33.exe`
+- Installation: `dist/Caeser Client Setup 0.3.34.exe`
+- Ohne Installation: `dist/Caeser-Client-Portable-0.3.34.exe`
 - Entwicklung: `npm ci`, `npm start`
 - Tests: `npm test` und `npm run test:ui`
 - Build: `npm run build`. Bei bereits installiertem Electron: `npm run build -- --config.electronDist=node_modules/electron/dist`

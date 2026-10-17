@@ -1,6 +1,6 @@
 {
   "name": "caeser-client",
-  "version": "0.3.33",
+  "version": "0.3.34",
   "description": "Caeser Client – Minecraft Java Launcher für Windows",
   "main": "src/main.cjs",
   "scripts": {
