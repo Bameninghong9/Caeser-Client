@@ -1,11 +1,11 @@
 // Launcher-Updates nur auf Wunsch: im Hintergrund wird lediglich geprüft, ob es eine neue Version gibt.
-// Herunterladen und Installieren startet erst der Klick auf den Update-Button in der Titelleiste.
+// Ein Klick auf den Update-Button in der Titelleiste lädt das Update, schließt den Launcher und startet die neue Version.
 // Die Releases liegen in einem eigenen, öffentlichen Repo, damit das Code-Repo privat sein darf.
 const RELEASES_URL = 'https://github.com/Bameninghong9/Caeser-Client-Releases/releases/latest';
 const FIRST_CHECK_DELAY = 5000;
 const CHECK_INTERVAL = 6 * 60 * 60 * 1000;
 
-// status: 'idle' (nichts zu tun) | 'available' | 'downloading' | 'ready'
+// status: 'idle' (nichts zu tun) | 'available' | 'downloading' | 'ready' (geladen, wartet auf Spielende) | 'installing'
 function createUpdater({ autoUpdater, enabled, portable = false, controller, emit = () => {}, openExternal, log = console,
   firstCheckDelay = FIRST_CHECK_DELAY, checkInterval = CHECK_INTERVAL } = {}) {
   let state = { status: 'idle', version: null, percent: 0, portable };
@@ -42,17 +42,23 @@ function createUpdater({ autoUpdater, enabled, portable = false, controller, emi
     if (state.status !== 'available') throw new Error('Es ist kein Update verfügbar.');
     // Die portable Version kann sich nicht selbst ersetzen: Download-Seite öffnen.
     if (portable) { await openExternal(RELEASES_URL); return state; }
+    if (blocked()) throw new Error('Bitte beende zuerst Minecraft und laufende Downloads.');
     set({ status: 'downloading', percent: 0 });
     try { await autoUpdater.downloadUpdate(); }
     catch (error) {
       set({ status: 'available', percent: 0 });
       throw new Error(`Das Update konnte nicht heruntergeladen werden: ${error?.message || error}`);
     }
+    // Ein Klick genügt: direkt installieren und neu starten. Wurde inzwischen Minecraft gestartet,
+    // bleibt das Update bereit ('ready') und wird über den Button nachgeholt.
+    if (state.status === 'ready' && !blocked()) install();
     return state;
   }
+  function blocked() { return !!(controller.game || controller.busy || controller.mods?.busy); }
   function install() {
     if (state.status !== 'ready') throw new Error('Das Update ist noch nicht heruntergeladen.');
-    if (controller.game || controller.busy || controller.mods?.busy) throw new Error('Bitte beende zuerst Minecraft und laufende Downloads.');
+    if (blocked()) throw new Error('Bitte beende zuerst Minecraft und laufende Downloads.');
+    set({ status: 'installing' });
     stop();
     // still installieren (bisheriger Installationsordner) und danach neu starten
     autoUpdater.quitAndInstall(true, true);

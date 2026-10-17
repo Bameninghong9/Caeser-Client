@@ -280,7 +280,8 @@ export const translations = {
 
     // Launcher-Update (Titelleiste)
     updateAvailable: 'Update auf {version}',
-    updateAvailableTitle: 'Neue Version {version} herunterladen und installieren',
+    updateAvailableTitle: 'Version {version} herunterladen; der Launcher startet danach automatisch neu',
+    updateInstalling: 'Wird installiert …',
     updatePortableTitle: 'Neue Version {version} auf der Download-Seite öffnen',
     updateDownloading: 'Lädt … {percent} %',
     updateReady: 'Neu starten & aktualisieren',
@@ -644,7 +645,8 @@ export const translations = {
 
     // Launcher update (title bar)
     updateAvailable: 'Update to {version}',
-    updateAvailableTitle: 'Download and install version {version}',
+    updateAvailableTitle: 'Download version {version}; the launcher then restarts automatically',
+    updateInstalling: 'Installing …',
     updatePortableTitle: 'Open the download page for version {version}',
     updateDownloading: 'Downloading … {percent} %',
     updateReady: 'Restart & update',

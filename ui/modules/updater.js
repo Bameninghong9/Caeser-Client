@@ -1,5 +1,5 @@
 // Update-Button in der Titelleiste: erscheint nur, wenn es eine neue Launcher-Version gibt.
-// Herunterladen und Installieren passiert erst auf Klick (siehe src/app/updater.cjs).
+// Nichts passiert ohne Klick (siehe src/app/updater.cjs).
 import { $, api, action, toast } from './common.js';
 import { t } from './i18n.js';
 
@@ -11,14 +11,17 @@ const fill = (key, values) => Object.entries(values).reduce((text, [name, value]
 function render() {
   const button = $('update-button');
   const { status: current, version, percent, portable } = status;
-  button.hidden = !['available', 'downloading', 'ready'].includes(current);
+  button.hidden = !['available', 'downloading', 'ready', 'installing'].includes(current);
   if (button.hidden) return;
-  const waiting = current === 'ready' && inGame;
-  button.disabled = current === 'downloading';
+  const waiting = (current === 'ready' || current === 'available') && inGame && !portable;
+  button.disabled = current === 'downloading' || current === 'installing';
   button.classList.toggle('waiting', waiting);
-  if (current === 'available') {
+  if (current === 'installing') {
+    button.textContent = t('updateInstalling');
+    button.title = '';
+  } else if (current === 'available') {
     button.textContent = fill('updateAvailable', { version });
-    button.title = fill(portable ? 'updatePortableTitle' : 'updateAvailableTitle', { version });
+    button.title = waiting ? t('updateCloseGame') : fill(portable ? 'updatePortableTitle' : 'updateAvailableTitle', { version });
   } else if (current === 'downloading') {
     button.textContent = fill('updateDownloading', { percent: percent || 0 });
     button.title = '';
@@ -28,12 +31,11 @@ function render() {
   }
 }
 
+// Ein Klick: herunterladen, dann schließt sich der Launcher und startet in der neuen Version (portable: Download-Seite).
 function onClick() {
+  if (inGame && !status.portable) { toast(t('updateCloseGame')); return; }
   if (status.status === 'available') return action(async () => { status = await api.downloadUpdate(); render(); });
-  if (status.status === 'ready') {
-    if (inGame) { toast(t('updateCloseGame')); return; }
-    return action(() => api.installUpdate());
-  }
+  if (status.status === 'ready') return action(() => api.installUpdate());
 }
 
 export function initUpdater(initialState) {

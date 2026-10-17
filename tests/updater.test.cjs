@@ -32,17 +32,41 @@ test('Ohne Update bleibt der Status idle; Fehler beim Prüfen bleiben still', as
   assert.equal((await updater.check()).status, 'idle');
 });
 
-test('Klick lädt herunter, meldet Fortschritt und installiert danach erst auf zweiten Klick', async () => {
-  const { auto, calls, updater } = setup();
+// Wie electron-updater: update-downloaded kommt, bevor downloadUpdate() fertig ist.
+const downloads = (auto, calls, version = '0.3.31') => async () => {
+  calls.download++; auto.emit('download-progress', { percent: 41.6 }); auto.emit('update-downloaded', { version });
+};
+
+test('Ein Klick: herunterladen, Fortschritt melden, dann sofort installieren und neu starten', async () => {
+  const { auto, calls, updater, events } = setup();
   auto.emit('update-available', { version: '0.3.31' });
-  auto.downloadUpdate = async () => { calls.download++; auto.emit('download-progress', { percent: 41.6 }); assert.equal(updater.status().percent, 42); };
+  auto.downloadUpdate = downloads(auto, calls);
   await updater.download();
   assert.equal(calls.download, 1);
+  assert.ok(events.some(e => e.data.status === 'downloading' && e.data.percent === 42));
+  assert.deepEqual(calls.install, [[true, true]]);
+  assert.equal(updater.status().status, 'installing');
+});
+
+test('Wird Minecraft während des Downloads gestartet, bleibt das Update bereit statt das Spiel zu schließen', async () => {
+  const { auto, calls, updater, controller } = setup();
+  auto.emit('update-available', { version: '0.3.31' });
+  auto.downloadUpdate = async () => { controller.game = {}; await downloads(auto, calls)(); };
+  await updater.download();
   assert.equal(calls.install.length, 0);
-  auto.emit('update-downloaded', { version: '0.3.31' });
   assert.equal(updater.status().status, 'ready');
+  controller.game = null;
   updater.install();
   assert.deepEqual(calls.install, [[true, true]]);
+});
+
+test('Klick bei laufendem Minecraft lädt nichts herunter', async () => {
+  const { auto, calls, updater, controller } = setup();
+  auto.emit('update-available', { version: '0.3.31' });
+  controller.game = {};
+  await assert.rejects(updater.download(), /Minecraft/);
+  assert.equal(calls.download, 0);
+  assert.equal(updater.status().status, 'available');
 });
 
 test('Download-Fehler: zurück auf available, Fehlermeldung für die UI', async () => {
@@ -51,16 +75,6 @@ test('Download-Fehler: zurück auf available, Fehlermeldung für die UI', async 
   auto.downloadUpdate = async () => { throw new Error('Netzwerk weg'); };
   await assert.rejects(updater.download(), /Netzwerk weg/);
   assert.equal(updater.status().status, 'available');
-});
-
-test('Installation wartet, solange Minecraft läuft', async () => {
-  const { auto, calls, updater, controller } = setup();
-  auto.emit('update-available', { version: '0.3.31' });
-  await updater.download();
-  auto.emit('update-downloaded', { version: '0.3.31' });
-  controller.game = {};
-  assert.throws(() => updater.install(), /Minecraft/);
-  assert.equal(calls.install.length, 0);
 });
 
 test('Portable: Klick öffnet nur die Download-Seite', async () => {
