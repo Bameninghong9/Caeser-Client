@@ -38,6 +38,14 @@ try {
       Invoke-RestMethod "$repo/git/refs" -Method Post -Headers $headers -Body $body -ContentType 'application/json' | Out-Null
       Write-Host "Tag $tag angelegt."
     }
+    # Release vorher selbst anlegen: sonst legen Setup- und Portable-Upload gleichzeitig eines an und einer scheitert.
+    # electron-builder lädt in ein vorhandenes, vor weniger als 2 Stunden veröffentlichtes Release hoch.
+    try { Invoke-RestMethod "$repo/releases/tags/$tag" -Headers $headers | Out-Null; Write-Host "Release $tag existiert schon." }
+    catch {
+      $body = @{ tag_name = $tag; name = $version } | ConvertTo-Json
+      Invoke-RestMethod "$repo/releases" -Method Post -Headers $headers -Body $body -ContentType 'application/json' | Out-Null
+      Write-Host "Release $tag angelegt."
+    }
     npm run release
     if ($LASTEXITCODE -ne 0) { throw "Release fehlgeschlagen (Code $LASTEXITCODE)." }
   }
